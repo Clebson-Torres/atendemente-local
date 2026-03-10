@@ -1,7 +1,26 @@
 import "server-only";
-import { and, desc, eq, gte, isNull, lte, sql } from "drizzle-orm";
+import { and, desc, eq, gte, isNull, lte, ne, or, sql } from "drizzle-orm";
 import { getDb } from "@/db/client";
 import { appointments, patients, payments } from "@/db/schema";
+import type { PaymentMethod, PaymentStatus } from "@/types/domain";
+
+function mapPaymentRow<
+  T extends {
+    paymentId: string | null;
+    appointmentId: string;
+    status: PaymentStatus | null;
+    method: PaymentMethod | null;
+    amountReceivedCents: number | null;
+  },
+>(row: T) {
+  return {
+    ...row,
+    id: row.paymentId ?? row.appointmentId,
+    status: row.status ?? "pending",
+    method: row.method ?? "other",
+    amountReceivedCents: row.amountReceivedCents ?? 0,
+  };
+}
 
 export async function getFinancialSummary(userId: string) {
   const db = getDb();
@@ -20,16 +39,17 @@ export async function getFinancialSummary(userId: string) {
           Number,
         ),
       pendingCents:
-        sql<number>`coalesce(sum(case when ${payments.status} = 'pending' then ${appointments.sessionPriceCents} else 0 end), 0)`.mapWith(
+        sql<number>`coalesce(sum(case when ${payments.id} is null or ${payments.status} = 'pending' then ${appointments.sessionPriceCents} else 0 end), 0)`.mapWith(
           Number,
         ),
     })
-    .from(payments)
-    .innerJoin(appointments, eq(appointments.id, payments.appointmentId))
+    .from(appointments)
+    .leftJoin(payments, and(eq(payments.appointmentId, appointments.id), isNull(payments.deletedAt)))
     .where(
       and(
-        eq(payments.userId, userId),
-        isNull(payments.deletedAt),
+        eq(appointments.userId, userId),
+        isNull(appointments.deletedAt),
+        ne(appointments.status, "cancelled"),
         gte(appointments.startsAt, monthStart),
         lte(appointments.startsAt, monthEnd),
       ),
@@ -42,10 +62,10 @@ export async function getFinancialSummary(userId: string) {
 }
 
 export async function listPendingPayments(userId: string) {
-  return getDb()
+  const rows = await getDb()
     .select({
-      id: payments.id,
-      appointmentId: payments.appointmentId,
+      paymentId: payments.id,
+      appointmentId: appointments.id,
       status: payments.status,
       method: payments.method,
       amountReceivedCents: payments.amountReceivedCents,
@@ -54,18 +74,27 @@ export async function listPendingPayments(userId: string) {
       startsAt: appointments.startsAt,
       sessionPriceCents: appointments.sessionPriceCents,
     })
-    .from(payments)
-    .innerJoin(appointments, eq(appointments.id, payments.appointmentId))
+    .from(appointments)
+    .leftJoin(payments, and(eq(payments.appointmentId, appointments.id), isNull(payments.deletedAt)))
     .innerJoin(patients, eq(patients.id, appointments.patientId))
-    .where(and(eq(payments.userId, userId), eq(payments.status, "pending"), isNull(payments.deletedAt)))
+    .where(
+      and(
+        eq(appointments.userId, userId),
+        isNull(appointments.deletedAt),
+        ne(appointments.status, "cancelled"),
+        or(isNull(payments.id), eq(payments.status, "pending")),
+      ),
+    )
     .orderBy(desc(appointments.startsAt));
+
+  return rows.map(mapPaymentRow);
 }
 
 export async function listPayments(userId: string) {
-  return getDb()
+  const rows = await getDb()
     .select({
-      id: payments.id,
-      appointmentId: payments.appointmentId,
+      paymentId: payments.id,
+      appointmentId: appointments.id,
       status: payments.status,
       method: payments.method,
       amountReceivedCents: payments.amountReceivedCents,
@@ -74,9 +103,11 @@ export async function listPayments(userId: string) {
       startsAt: appointments.startsAt,
       sessionPriceCents: appointments.sessionPriceCents,
     })
-    .from(payments)
-    .innerJoin(appointments, eq(appointments.id, payments.appointmentId))
+    .from(appointments)
+    .leftJoin(payments, and(eq(payments.appointmentId, appointments.id), isNull(payments.deletedAt)))
     .innerJoin(patients, eq(patients.id, appointments.patientId))
-    .where(and(eq(payments.userId, userId), isNull(payments.deletedAt)))
+    .where(and(eq(appointments.userId, userId), isNull(appointments.deletedAt), ne(appointments.status, "cancelled")))
     .orderBy(desc(appointments.startsAt));
+
+  return rows.map(mapPaymentRow);
 }

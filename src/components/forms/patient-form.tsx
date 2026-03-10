@@ -33,6 +33,16 @@ function itemsToString(items: string[]) {
   return items.join("\n");
 }
 
+function buildHealthHistoryValue(items: string[], draftValue: string) {
+  const nextDraft = draftValue.trim();
+
+  if (!nextDraft || items.includes(nextDraft)) {
+    return itemsToString(items);
+  }
+
+  return itemsToString([...items, nextDraft]);
+}
+
 export function PatientForm({ patientId, defaultValues, submitLabel = "Salvar paciente" }: PatientFormProps) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
@@ -107,7 +117,11 @@ export function PatientForm({ patientId, defaultValues, submitLabel = "Salvar pa
   const onSubmit = form.handleSubmit((values) => {
     startTransition(async () => {
       setDuplicatePatientId(null);
-      const result = patientId ? await updatePatientAction(patientId, values) : await createPatientAction(values);
+      const payload = {
+        ...values,
+        healthHistory: buildHealthHistoryValue(selectedHealthItems, healthSearch),
+      };
+      const result = patientId ? await updatePatientAction(patientId, payload) : await createPatientAction(payload);
 
       if (!result.success) {
         setDuplicatePatientId(result.data?.duplicatePatientId ?? null);
