@@ -256,6 +256,24 @@ pub async fn logout(db: &SqlitePool, token: &str) -> Result<(), String> {
     Ok(())
 }
 
+/// Verify a user's password by looking up their stored hash
+pub async fn verify_user_password(
+    db: &SqlitePool,
+    user_id: &str,
+    password: &str,
+) -> Result<bool, String> {
+    let row = sqlx::query_scalar::<_, String>(
+        "SELECT password_hash FROM auth_users WHERE id = ?",
+    )
+    .bind(user_id)
+    .fetch_optional(db)
+    .await
+    .map_err(|e| format!("Erro ao buscar usuario: {}", e))?
+    .ok_or_else(|| "Usuário não encontrado.".to_string())?;
+
+    verify_password(password, &row)
+}
+
 /// Start password recovery using recovery file secret
 pub async fn recover_with_secret(
     db: &SqlitePool,

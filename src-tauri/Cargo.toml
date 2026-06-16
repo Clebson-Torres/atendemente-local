@@ -1,9 +1,10 @@
 [package]
 name = "atendemente"
-version = "0.1.0"
+version = "1.0.5"
 description = "AtendeMente - Gestão para psicólogos autônomos"
 authors = ["Clebson Torres"]
 edition = "2021"
+default-run = "atendemente"
 
 [lib]
 name = "atendemente_lib"
@@ -55,6 +56,7 @@ env_logger = "0.11"
 thiserror = "2"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+keyring = { version = "3", features = ["windows-native"] }
 dotenvy = "0.15"
 
 [dev-dependencies]

@@ -70,7 +70,14 @@ export const test = base.extend<{ user: TestUser; authPage: Page }>({
   ],
   authPage: [
     async ({ page, user }, use) => {
-      await loginAs(page, user.email, user.password);
+      // Inject token before any page scripts run, so full page navigations
+      // (authPage.goto) don't lose the in-memory token
+      await page.addInitScript(`window.__E2E_TOKEN__ = ${JSON.stringify(user.token)};`);
+      // Navigate directly to dashboard; the injected token triggers
+      // restoreSession → completeFromStoredToken → /auth/me → user is set.
+      // No need for UI login — Login.tsx redirects away if already authenticated.
+      await page.goto("/");
+      await page.waitForSelector("text=Visão geral", { timeout: 15000 });
       await use(page);
     },
     { scope: "test", timeout: 30000 },

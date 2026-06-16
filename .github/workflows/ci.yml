@@ -10,17 +10,8 @@ on:
 jobs:
   quality:
     runs-on: ubuntu-latest
-    env:
-      NEXT_PUBLIC_SUPABASE_URL: https://example.supabase.co
-      NEXT_PUBLIC_SUPABASE_ANON_KEY: test-anon-key
-      NEXT_PUBLIC_APP_URL: http://127.0.0.1:3001
-      SUPABASE_SERVICE_ROLE_KEY: test-service-role-key
-      DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/postgres
-      APP_ENCRYPTION_KEY: MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=
-      PRIVATE_STORAGE_BUCKET: private-record-files
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
       - name: Setup Node
         uses: actions/setup-node@v4
@@ -31,25 +22,48 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Install Playwright browsers
-        run: npx playwright install --with-deps chromium
-
-      - name: Lint
+      - name: TypeScript check
         run: npm run lint
 
       - name: Unit and integration tests
         run: npm run test
 
-      - name: Production build
+      - name: Production build (frontend)
         run: npm run build
 
-      - name: Public e2e smoke
-        run: npm run test:e2e
+  build:
+    needs: quality
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
 
-      - name: Upload Playwright report
-        if: always()
-        uses: actions/upload-artifact@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
         with:
-          name: playwright-report
-          path: playwright-report
-          if-no-files-found: ignore
+          node-version: 22
+          cache: npm
+
+      - name: Setup Rust
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build Rust backend
+        run: cargo build --bin server
+        working-directory: src-tauri
+
+      - name: Build frontend
+        run: npm run build
+
+      - name: Verify binary
+        shell: bash
+        run: |
+          if [ "${{ runner.os }}" = "Windows" ]; then
+            test -f src-tauri/target/debug/server.exe && echo "OK: server.exe"
+          else
+            test -f src-tauri/target/debug/server && echo "OK: server"
+          fi

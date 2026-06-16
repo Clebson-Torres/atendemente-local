@@ -10,6 +10,7 @@ pub mod middleware;
 pub mod rate_limit;
 pub mod utils;
 
+use std::collections::HashMap;
 use std::sync::Arc;
 
 use axum::{middleware as axum_middleware, Router};
@@ -24,14 +25,14 @@ use crate::errors::AppError;
 pub struct AppState {
     pub config: config::AppConfig,
     pub auth_db: SqlitePool,
-    pub user_db: RwLock<Option<SqlitePool>>,
+    pub user_dbs: RwLock<HashMap<String, SqlitePool>>,
 }
 
 impl AppState {
     pub async fn get_or_open_user_db(&self, user_id: &str) -> Result<SqlitePool, AppError> {
         {
-            let guard = self.user_db.read().await;
-            if let Some(pool) = guard.as_ref() {
+            let guard = self.user_dbs.read().await;
+            if let Some(pool) = guard.get(user_id) {
                 if sqlx::query("SELECT 1").execute(pool).await.is_ok() {
                     return Ok(pool.clone());
                 }
@@ -57,14 +58,19 @@ impl AppState {
         .await
         .map_err(|e| AppError::internal(format!("Erro ao sincronizar usuario: {}", e)))?;
 
-        let mut guard = self.user_db.write().await;
-        *guard = Some(pool.clone());
+        let mut guard = self.user_dbs.write().await;
+        guard.insert(user_id.to_string(), pool.clone());
         Ok(pool)
     }
 
     pub async fn clear_user_db(&self) {
-        let mut guard = self.user_db.write().await;
-        *guard = None;
+        let mut guard = self.user_dbs.write().await;
+        guard.clear();
+    }
+
+    pub async fn clear_user_db_for_user(&self, user_id: &str) {
+        let mut guard = self.user_dbs.write().await;
+        guard.remove(user_id);
     }
 }
 

@@ -1,121 +1,147 @@
 # AtendeMente Local
 
-AtendeMente Local is a desktop application for independent psychology practice management. It combines a Tauri shell, a React/Vite frontend, an embedded Rust/Axum API, SQLite storage, Firebase Authentication, encrypted session records, local file storage, payments, appointments, and patient exports.
+Aplicação desktop para gestão de consultórios de psicologia. Combina shell Tauri v2,
+frontend React/Vite/TypeScript com API embarcada Rust/Axum e SQLite local.
 
 ## Stack
 
-- Desktop: Tauri v2
-- Frontend: React 18, TypeScript, Vite, Tailwind CSS
-- Backend: Rust, Axum, Tokio
-- Database: SQLite with SQLx migrations
-- Authentication: Firebase Auth JWT verification
-- Encryption: AES-256-GCM with per-user derived keys
-- Storage: local filesystem uploads
+| Camada     | Tecnologia                                              |
+|------------|---------------------------------------------------------|
+| Desktop    | Tauri v2                                                |
+| Frontend   | React 18, TypeScript, Vite 6, Tailwind CSS 3, Zod 4    |
+| Backend    | Rust, Axum, Tokio, SQLx                                 |
+| Banco      | SQLite (1 por usuário)                                  |
+| Hash senha | Argon2id (19 MiB, 2 iterações)                          |
+| Criptografia | AES-256-GCM + HKDF-SHA256 (por usuário)              |
+| Keychain   | keyring v3 (Windows Credential Manager / macOS Keychain)|
+| Testes     | Vitest (unit), Playwright (E2E)                         |
 
-## Requirements
+## Funcionalidades
 
-- Node.js 20 or newer
+- **Autenticação local** — email + senha com Argon2id, rate limit (5 tentativas/10min)
+- **Recuperação de conta** — secret recovery de 32 bytes (hash SHA-256)
+- **Bloqueio por inatividade** — overlay após 5 min, exige senha para desbloquear
+- **Pacientes (CRUD criptografado)** — nome, telefone, email, data nascimento, histórico clínico,
+  medicações, anotações — tudo AES-256-GCM, chave derivada por usuário via HKDF
+- **Busca indexada** — nome (plaintext) + tokens de busca para telefone/email (índice `patient_search_tokens`)
+- **Detecção de duplicatas** — identidade por nome + telefone via token `identity_key`
+- **Agendamento** — consultas com status, duração, observações, reagendamento
+- **Recorrência** — suporte a consultas recorrentes (semanal, quinzenal, mensal, etc.)
+- **Pagamentos** — registro de valores, métodos, status (pendente/pago/cancelado)
+- **Dashboard** — cards com totais e gráfico de agendamentos dos próximos dias
+- **Timeline do paciente** — linha do tempo com consultas e pagamentos consolidados
+- **Exportação** — dados do paciente em formato JSON
+- **Upload de arquivos** — anexos por consulta (armazenamento local)
+- **Headers de segurança** — CSP restritivo, X-Frame-Options DENY, X-Content-Type-Options nosniff
+
+## Requisitos
+
+- Node.js 20 ou superior
 - npm
 - Rust stable toolchain
-- Tauri system prerequisites for your OS
-- Firebase project configured for authentication
-
-On Windows, install the Microsoft C++ Build Tools and WebView2 runtime if they are not already available.
+- Windows: Microsoft C++ Build Tools + WebView2 runtime
+- Linux: `webkit2gtk-4.1-dev`, `libgtk-3-dev`, etc. (ver [Tauri prerequisites](https://v2.tauri.app/start/prerequisites/))
+- macOS: Xcode Command Line Tools
 
 ## Setup
-
-Install frontend dependencies:
 
 ```bash
 npm install
 ```
 
-Create a local environment file if needed:
+Configure variáveis de ambiente (ou use os defaults):
 
-```bash
-FIREBASE_PROJECT_ID=your-firebase-project-id
-```
-
-Optional variables:
-
-```bash
+```env
 DATABASE_URL=sqlite:C:/Users/you/.config/atendemente/atendemente.db?mode=rwc
+AUTH_DATABASE_URL=sqlite:C:/Users/you/.config/atendemente/auth.db?mode=rwc
 SERVER_PORT=3001
 STORAGE_DIR=C:/Users/you/.config/atendemente/uploads
-MASTER_PEPPER=base64-or-hex-32-byte-secret
-VITE_FIREBASE_API_KEY=your-web-api-key
-VITE_FIREBASE_AUTH_DOMAIN=your-project.firebaseapp.com
-VITE_FIREBASE_PROJECT_ID=your-firebase-project-id
-VITE_FIREBASE_STORAGE_BUCKET=your-project.firebasestorage.app
-VITE_FIREBASE_MESSAGING_SENDER_ID=your-sender-id
-VITE_FIREBASE_APP_ID=your-app-id
+MASTER_PEPPER=base64-32-bytes
 ```
 
-If `MASTER_PEPPER` is not provided, the app generates one and stores it in the local AtendeMente config directory.
+A chave mestra (`MASTER_PEPPER`) é opcional. Se não for fornecida, o sistema gera uma
+de 32 bytes via CSPRNG e a armazena no Windows Credential Manager (ou macOS Keychain).
 
-## Development
-
-Run the Tauri desktop app:
+## Desenvolvimento
 
 ```bash
+# Tauri desktop
 npm run tauri dev
+
+# Só frontend (API precisa rodar separada)
+npm run dev
+
+# Servidor standalone (para testar sem Tauri)
+cd src-tauri && cargo run --bin server -- --port 3001
 ```
 
-Run only the frontend dev server:
+O frontend espera a API em `http://localhost:3001/api`.
+
+## Testes
 
 ```bash
-npm run dev
-```
+# Unitários + integração (Vitest)
+npm run test
 
-The frontend expects the local API at:
+# Rust
+cd src-tauri && cargo test
 
-```text
-http://localhost:3001/api
+# E2E (Playwright) — local apenas
+npm run test:e2e
 ```
 
 ## Build
 
-Build the frontend:
-
 ```bash
+# Frontend
 npm run build
-```
 
-Build the desktop application:
-
-```bash
+# Desktop (gera instalador)
 npm run tauri build
+
+# Servidor standalone
+cd src-tauri && cargo build --bin server --release
 ```
 
-## Tests
+## Estrutura do Projeto
 
-Run Rust tests:
-
-```bash
-cd src-tauri
-cargo test
 ```
-
-## Project Layout
-
-```text
 src/
-  components/      React UI components
-  pages/           App screens
-  lib/             Frontend API and auth helpers
+  components/     Componentes React (UI, Layout, LockScreen)
+  pages/          Telas (Login, Register, Dashboard, Patients, Appointments, Payments)
+  lib/            Helpers (auth.ts, api.ts, utils.ts, format.ts)
 
 src-tauri/
-  src/api/         Axum route definitions
-  src/features/    Business logic
-  src/db/          SQLite initialization, models, migrations
-  src/crypto.rs    Session record encryption
-  src/firebase.rs  Firebase JWT verification
-  icons/           Tauri application icons
+  src/
+    api/          Rotas Axum (routes.rs)
+    auth/         Autenticação (mod.rs, auth_service.rs)
+    features/     Lógica de negócio (patients, appointments, payments, records, dashboard)
+    db/           SQLite (init, models, migrations)
+    crypto.rs     AES-256-GCM + HKDF
+    config.rs     Config + keychain loading
+    middleware.rs Headers de segurança
+    rate_limit.rs Rate limiting por escopo
+  migrations/     SQL migrations
+  icons/          Ícones do app
+
+e2e/              Testes Playwright (specs, fixtures, runner)
+tests/            Testes Vitest (schemas, format, cn, form)
 ```
 
-## Notes
+## CI
 
-- Session records are encrypted before being stored in SQLite.
-- Uploaded files are stored on the local filesystem and referenced from SQLite.
-- The app requires a valid Firebase project ID outside development mode.
-- Local database and upload files are intentionally ignored by Git.
+O workflow do GitHub Actions executa:
+
+1. **quality** (ubuntu-latest)
+   - TypeScript check
+   - Testes unitários + integração (Vitest)
+   - Build do frontend
+
+2. **build** (ubuntu, windows, macos — após quality)
+   - Compilação do backend Rust
+   - Build do frontend
+   - Verificação do binário gerado
+
+## Licença
+
+Proprietária — todos os direitos reservados.

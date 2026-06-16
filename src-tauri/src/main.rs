@@ -1,8 +1,10 @@
 // Prevents additional console window on Windows in release
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-use atendemente_lib::{run_server, AppState};
+use std::collections::HashMap;
 use std::sync::Arc;
+
+use atendemente_lib::{run_server, AppState};
 use tokio::sync::RwLock;
 use tauri_plugin_dialog::DialogExt;
 
@@ -47,7 +49,7 @@ async fn main() {
     let state = Arc::new(AppState {
         config: config.clone(),
         auth_db,
-        user_db: RwLock::new(None),
+        user_dbs: RwLock::new(HashMap::new()),
     });
 
     tauri::Builder::default()

@@ -1,6 +1,8 @@
-use atendemente_lib::{run_server, AppState};
-use atendemente_lib::config::AppConfig;
+use std::collections::HashMap;
 use std::sync::Arc;
+
+use atendemente_lib::config::AppConfig;
+use atendemente_lib::{run_server, AppState};
 use tokio::sync::RwLock;
 
 #[tokio::main]
@@ -32,7 +34,7 @@ async fn main() {
     let state = Arc::new(AppState {
         config: config.clone(),
         auth_db,
-        user_db: RwLock::new(None),
+        user_dbs: RwLock::new(HashMap::new()),
     });
 
     run_server(state, None).await;

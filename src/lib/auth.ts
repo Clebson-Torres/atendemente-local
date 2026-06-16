@@ -39,6 +39,16 @@ async function apiRequest<T>(path: string, body?: unknown): Promise<T> {
 
 let _token: string | null = null;
 
+// E2E support: allow injecting a token before page scripts run
+// (set by Playwright fixture via page.addInitScript)
+if (
+  import.meta.env.DEV &&
+  typeof window !== "undefined" &&
+  (window as any).__E2E_TOKEN__
+) {
+  _token = (window as any).__E2E_TOKEN__;
+}
+
 function getStoredToken(): string | null {
   return _token;
 }
@@ -122,6 +132,14 @@ export async function logout() {
   notify(null);
 }
 
+export async function lock(): Promise<void> {
+  await apiRequest<void>("/auth/lock");
+}
+
+export async function unlock(password: string): Promise<void> {
+  await apiRequest<void>("/auth/unlock", { password });
+}
+
 export function getCurrentToken(): string | null {
   return getStoredToken();
 }
@@ -147,8 +165,12 @@ export async function resetPassword(
   });
 }
 
-// ─── Session restore (no-op — token is in-memory only) ───────────────────
+// ─── Session restore ─────────────────────────────────────────────────────
 
 export async function restoreSession(): Promise<void> {
+  const token = getStoredToken();
+  if (token) {
+    return completeFromStoredToken();
+  }
   notify(null);
 }

@@ -14,7 +14,51 @@ pub struct User {
 
 // ─── Patients ───────────────────────────────────────────────────────────────
 
-#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
+/// DB row with optional encrypted PII columns.
+/// Used internally for queries; callers convert to `Patient` or `PatientListItem`.
+#[derive(Debug, Clone, sqlx::FromRow)]
+pub struct PatientRow {
+    pub id: String,
+    pub user_id: String,
+    pub full_name: String,
+    pub chart_number: Option<String>,
+    pub phone: Option<String>,
+    pub email: Option<String>,
+    pub birth_date: Option<String>,
+    pub status: String,
+    pub emergency_phone: Option<String>,
+    pub health_history: Option<String>,
+    pub medications_in_use: Option<String>,
+    pub admin_notes: Option<String>,
+    pub created_at: String,
+    pub updated_at: String,
+    pub deleted_at: Option<String>,
+    pub pii_encrypted: Option<String>,
+    pub pii_iv: Option<String>,
+    pub pii_auth_tag: Option<String>,
+}
+
+/// Decrypted PII fields stored inside the encrypted blob.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PatientPii {
+    pub phone: Option<String>,
+    pub email: Option<String>,
+    pub birth_date: Option<String>,
+    pub emergency_phone: Option<String>,
+    pub health_history: Option<String>,
+    pub medications_in_use: Option<String>,
+    pub admin_notes: Option<String>,
+}
+
+/// A row in the patient_search_tokens index.
+#[derive(Debug, Clone, sqlx::FromRow)]
+pub struct SearchToken {
+    pub patient_id: String,
+    pub token_type: String,
+    pub token_text: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Patient {
     pub id: String,
     pub user_id: String,

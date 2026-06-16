@@ -21,6 +21,8 @@ pub fn create_auth_router(state: Arc<AppState>) -> Router {
         .route("/auth/me", get(me_handler))
         .route("/auth/recover", post(recover_handler))
         .route("/auth/reset-password", post(reset_password_handler))
+        .route("/auth/lock", post(lock_handler))
+        .route("/auth/unlock", post(unlock_handler))
         .with_state(state)
 }
 
@@ -47,6 +49,11 @@ struct RecoverInput {
 struct ResetPasswordInput {
     reset_token: String,
     new_password: String,
+}
+
+#[derive(Deserialize)]
+struct UnlockInput {
+    password: String,
 }
 
 async fn register_handler(
@@ -200,6 +207,47 @@ async fn reset_password_handler(
     Ok(Json(ActionResponse::<()>::success_empty(
         "Senha redefinida com sucesso! Faca login novamente.",
     )))
+}
+
+async fn lock_handler(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+) -> Result<Json<ActionResponse<()>>, AppError> {
+    let token = extract_bearer_token(&headers)?;
+    let (user_id, _email, _full_name) = auth_service::validate_session(&state.auth_db, &token)
+        .await
+        .map_err(|e| AppError::unauthorized(e))?;
+
+    crate::crypto::clear_user_crypto(&user_id);
+    state.clear_user_db_for_user(&user_id).await;
+
+    Ok(Json(ActionResponse::<()>::success_empty("Tela bloqueada.")))
+}
+
+async fn unlock_handler(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Json(input): Json<UnlockInput>,
+) -> Result<Json<ActionResponse<()>>, AppError> {
+    let token = extract_bearer_token(&headers)?;
+    let (user_id, _email, _full_name) = auth_service::validate_session(&state.auth_db, &token)
+        .await
+        .map_err(|e| AppError::unauthorized(e))?;
+
+    let password_valid = auth_service::verify_user_password(&state.auth_db, &user_id, &input.password)
+        .await
+        .map_err(|e| AppError::internal(e))?;
+
+    if !password_valid {
+        return Err(AppError::unauthorized("Senha incorreta."));
+    }
+
+    crate::crypto::init_user_crypto(&user_id)
+        .map_err(|e| AppError::internal(format!("Erro ao reiniciar criptografia: {}", e)))?;
+
+    state.get_or_open_user_db(&user_id).await?;
+
+    Ok(Json(ActionResponse::<()>::success_empty("Tela desbloqueada.")))
 }
 
 fn extract_bearer_token(headers: &HeaderMap) -> Result<String, AppError> {

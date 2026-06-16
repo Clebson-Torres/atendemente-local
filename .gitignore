@@ -16,6 +16,7 @@ uploads/
 
 /coverage
 /playwright-report
+playwright-report/
 /test-results
 
 /.next/
