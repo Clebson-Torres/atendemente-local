@@ -80,8 +80,8 @@ pub async fn register(
     if email.is_empty() {
         return Err("Email é obrigatório.".into());
     }
-    if password.len() < 6 {
-        return Err("A senha deve ter no mínimo 6 caracteres.".into());
+    if password.len() < 8 {
+        return Err("A senha deve ter no mínimo 8 caracteres.".into());
     }
     let full_name = full_name.trim().to_string();
     if full_name.is_empty() {
@@ -330,8 +330,8 @@ pub async fn reset_password(
     reset_token: &str,
     new_password: &str,
 ) -> Result<(), String> {
-    if new_password.len() < 6 {
-        return Err("A senha deve ter no mínimo 6 caracteres.".into());
+    if new_password.len() < 8 {
+        return Err("A senha deve ter no mínimo 8 caracteres.".into());
     }
 
     let reset_token_hash = format!("reset:{}", hash_token(reset_token));

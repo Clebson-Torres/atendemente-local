@@ -13,7 +13,7 @@ pub mod utils;
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use axum::{middleware as axum_middleware, Router};
+use axum::{extract::DefaultBodyLimit, http::HeaderValue, middleware as axum_middleware, Router};
 use sqlx::SqlitePool;
 use tauri::AppHandle;
 use tokio::sync::RwLock;
@@ -82,8 +82,20 @@ pub async fn run_server(state: Arc<AppState>, _app: Option<AppHandle>) {
         .nest("/api", auth_router)
         .nest("/api", api_routes)
         .route_layer(axum_middleware::from_fn(crate::middleware::security_headers))
+        .layer(DefaultBodyLimit::max(20 * 1024 * 1024))
         .layer(TraceLayer::new_for_http())
-        .layer(CorsLayer::permissive());
+        .layer(
+            CorsLayer::new()
+                .allow_origin("http://localhost:1420".parse::<HeaderValue>().unwrap())
+                .allow_methods([
+                    axum::http::Method::GET,
+                    axum::http::Method::POST,
+                    axum::http::Method::PUT,
+                    axum::http::Method::DELETE,
+                ])
+                .allow_headers(tower_http::cors::Any)
+                .allow_credentials(false),
+        );
 
     let addr = format!("127.0.0.1:{}", state.config.server_port);
     tracing::info!("Starting API server on {}", addr);

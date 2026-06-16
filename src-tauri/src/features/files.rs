@@ -1,3 +1,5 @@
+use std::path::Path;
+
 use sqlx::SqlitePool;
 use uuid::Uuid;
 
@@ -5,6 +7,45 @@ use crate::audit;
 use crate::config::AppConfig;
 use crate::db::models::{FileUploadRequest, RecordFile};
 use crate::errors::AppError;
+
+const MAX_FILE_SIZE_BYTES: u64 = 20 * 1024 * 1024;
+
+fn validate_file_content(bytes: &[u8], declared_name: &str) -> Result<(), AppError> {
+    let kind = infer::get(bytes);
+    let ext = Path::new(declared_name)
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or("")
+        .to_lowercase();
+
+    let allowed_pairs: &[(&str, &[&str])] = &[
+        ("application/pdf",  &["pdf"]),
+        ("image/jpeg",       &["jpg", "jpeg"]),
+        ("image/png",        &["png"]),
+        ("application/msword", &["doc"]),
+        ("application/vnd.openxmlformats-officedocument.wordprocessingml.document", &["docx"]),
+    ];
+
+    match kind {
+        Some(k) => {
+            let mime = k.mime_type();
+            let valid = allowed_pairs.iter().any(|(m, exts)| {
+                *m == mime && exts.contains(&ext.as_str())
+            });
+            if !valid {
+                return Err(AppError::bad_request(
+                    "Tipo de arquivo não permitido ou extensão não corresponde ao conteúdo.",
+                ));
+            }
+        }
+        None => {
+            if !["doc", "docx"].contains(&ext.as_str()) {
+                return Err(AppError::bad_request("Tipo de arquivo não reconhecido."));
+            }
+        }
+    }
+    Ok(())
+}
 
 const ALLOWED_EXTENSIONS: &[&str] = &[".pdf", ".doc", ".docx", ".png", ".jpg", ".jpeg"];
 pub async fn create_upload_session(
@@ -64,7 +105,7 @@ pub async fn create_upload_session(
         &input.patient_id,
         &input.appointment_id,
         &input.file_name,
-    );
+    )?;
 
     // Ensure storage dir exists
     if let Some(parent) = storage_path.parent() {
@@ -127,9 +168,8 @@ pub async fn confirm_upload(
         }
     };
 
-    // Verify size matches
+    // Verify size matches and max size
     if metadata.len() != file.byte_size as u64 {
-        // File size mismatch - reject
         let _ = tokio::fs::remove_file(path).await;
         sqlx::query("UPDATE record_files SET deleted_at = datetime('now') WHERE id = ? AND user_id = ?")
             .bind(file_id)
@@ -141,6 +181,24 @@ pub async fn confirm_upload(
             "Arquivo rejeitado pela validacao de seguranca (tamanho divergente).",
         ));
     }
+
+    if metadata.len() > MAX_FILE_SIZE_BYTES {
+        let _ = tokio::fs::remove_file(path).await;
+        sqlx::query("UPDATE record_files SET deleted_at = datetime('now') WHERE id = ? AND user_id = ?")
+            .bind(file_id)
+            .bind(user_id)
+            .execute(db)
+            .await
+            .ok();
+        return Err(AppError::bad_request(
+            "Arquivo excede o tamanho máximo de 20 MB.",
+        ));
+    }
+
+    // Validate magic bytes
+    let data = tokio::fs::read(path).await
+        .map_err(|_| AppError::internal("Erro ao ler arquivo para validacao."))?;
+    validate_file_content(&data, &file.original_name)?;
 
     // Audit log
     audit::write_audit_log(

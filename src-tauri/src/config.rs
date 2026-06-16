@@ -183,15 +183,22 @@ impl AppConfig {
         patient_id: &str,
         appointment_id: &str,
         filename: &str,
-    ) -> PathBuf {
+    ) -> Result<PathBuf, crate::errors::AppError> {
+        uuid::Uuid::parse_str(user_id)
+            .map_err(|_| crate::errors::AppError::bad_request("user_id inválido."))?;
+        uuid::Uuid::parse_str(patient_id)
+            .map_err(|_| crate::errors::AppError::bad_request("patient_id inválido."))?;
+        uuid::Uuid::parse_str(appointment_id)
+            .map_err(|_| crate::errors::AppError::bad_request("appointment_id inválido."))?;
+
         let ext = std::path::Path::new(filename)
             .extension()
             .and_then(|e| e.to_str())
             .unwrap_or("bin");
         let uuid = uuid::Uuid::new_v4();
-        self.storage_dir.join(format!(
+        Ok(self.storage_dir.join(format!(
             "{}/{}/{}/{}.{}",
             user_id, patient_id, appointment_id, uuid, ext
-        ))
+        )))
     }
 }
