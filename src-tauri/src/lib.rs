@@ -76,13 +76,42 @@ impl AppState {
     }
 }
 
+fn resolve_frontend_dist() -> PathBuf {
+    if let Ok(path) = std::env::var("FRONTEND_DIST") {
+        return PathBuf::from(path);
+    }
+
+    // Resolve relativo ao diretório do executável
+    if let Ok(exe) = std::env::current_exe() {
+        if let Some(exe_dir) = exe.parent() {
+            // server está em target/debug/server → sobe 2 níveis para raiz do projeto
+            let candidate = exe_dir.join("../../dist");
+            if candidate.join("index.html").exists() {
+                return candidate;
+            }
+            // server está em target/release/server → mesmo esquema
+            let candidate = exe_dir.join("../../../dist");
+            if candidate.join("index.html").exists() {
+                return candidate;
+            }
+        }
+    }
+
+    // Fallback: CWD relativo (para compatibilidade)
+    PathBuf::from("../dist")
+}
+
 pub async fn run_server(state: Arc<AppState>, _app: Option<AppHandle>) {
     let auth_router = crate::auth::create_auth_router(state.clone());
     let api_routes = api::routes::create_router(state.clone());
 
-    let frontend_dist: PathBuf = std::env::var("FRONTEND_DIST")
-        .unwrap_or_else(|_| "../dist".into())
-        .into();
+    let frontend_dist: PathBuf = resolve_frontend_dist();
+    if !frontend_dist.join("index.html").exists() {
+        tracing::warn!(
+            "FRONTEND_DIST={} não encontrada. Execute 'npm run build' antes ou use --dist <caminho>.",
+            frontend_dist.display()
+        );
+    }
 
     let dist = frontend_dist.clone();
     let app = Router::new()

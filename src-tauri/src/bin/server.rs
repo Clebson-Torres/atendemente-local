@@ -17,11 +17,24 @@ async fn main() {
     let mut config = AppConfig::from_env();
 
     let args: Vec<String> = std::env::args().collect();
-    if let Some(pos) = args.iter().position(|a| a == "--port") {
-        if let Some(port_str) = args.get(pos + 1) {
-            if let Ok(port) = port_str.parse() {
-                config.server_port = port;
+    let mut i = 0;
+    while i < args.len() {
+        match args[i].as_str() {
+            "--port" => {
+                if let Some(port_str) = args.get(i + 1) {
+                    if let Ok(port) = port_str.parse() {
+                        config.server_port = port;
+                    }
+                }
+                i += 2;
             }
+            "--dist" => {
+                if let Some(dist) = args.get(i + 1) {
+                    std::env::set_var("FRONTEND_DIST", dist);
+                }
+                i += 2;
+            }
+            _ => i += 1,
         }
     }
 
