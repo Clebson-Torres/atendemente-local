@@ -1,6 +1,6 @@
 import { getCurrentToken } from "./auth";
 
-const API = "http://localhost:3001/api";
+const API = `${window.location.origin}/api`;
 
 function isTauri(): boolean {
   return typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
