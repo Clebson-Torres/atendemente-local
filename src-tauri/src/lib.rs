@@ -1,5 +1,7 @@
 pub mod api;
 pub mod audit;
+#[cfg(test)]
+mod audit_tests;
 pub mod auth;
 pub mod commands;
 pub mod config;
@@ -101,7 +103,64 @@ fn resolve_frontend_dist() -> PathBuf {
     PathBuf::from("../dist")
 }
 
+fn start_backup_scheduler(state: Arc<AppState>) {
+    tokio::spawn(async move {
+        let mut interval = tokio::time::interval(tokio::time::Duration::from_secs(3600));
+        loop {
+            interval.tick().await;
+            let users: Vec<String> = match sqlx::query_scalar(
+                "SELECT id FROM auth_users",
+            )
+            .fetch_all(&state.auth_db)
+            .await
+            {
+                Ok(u) => u,
+                Err(_) => continue,
+            };
+            for user_id in &users {
+                let db = match state.get_or_open_user_db(user_id).await {
+                    Ok(d) => d,
+                    Err(_) => continue,
+                };
+                let config = match crate::features::backup::get_backup_config(&db, user_id).await {
+                    Ok(c) => c,
+                    Err(_) => continue,
+                };
+                let should_backup = match config.frequency.as_str() {
+                    "never" => false,
+                    "daily" => {
+                        let last = config.last_backup_at.as_deref().unwrap_or("");
+                        let today = chrono::Utc::now().format("%Y-%m-%d").to_string();
+                        !last.starts_with(&today)
+                    }
+                    "weekly" => {
+                        let last = config.last_backup_at.as_deref().unwrap_or("");
+                        let now = chrono::Utc::now();
+                        let week_start = (now - chrono::Duration::days(7))
+                            .format("%Y-%m-%d")
+                            .to_string();
+                        last < week_start.as_str()
+                    }
+                    _ => false,
+                };
+                if should_backup {
+                    match crate::features::backup::create_backup(&db, &state.config, user_id).await {
+                        Ok(bundle) => {
+                            let _ = crate::features::backup::touch_backup_timestamp(&db, user_id).await;
+                            tracing::info!("Backup automatico criado: {}", bundle.file_name);
+                        }
+                        Err(e) => {
+                            tracing::warn!("Falha no backup automatico para {}: {}", user_id, e);
+                        }
+                    }
+                }
+            }
+        }
+    });
+}
+
 pub async fn run_server(state: Arc<AppState>, _app: Option<AppHandle>) {
+    start_backup_scheduler(state.clone());
     let auth_router = crate::auth::create_auth_router(state.clone());
     let api_routes = api::routes::create_router(state.clone());
 
@@ -130,12 +189,12 @@ pub async fn run_server(state: Arc<AppState>, _app: Option<AppHandle>) {
                                 Ok(Response::builder()
                                     .header("content-type", mime.as_ref())
                                     .body(Body::from(data))
-                                    .unwrap())
+                                    .unwrap_or_else(|_| Response::new(Body::from("Internal error"))))
                             }
                             Err(_) => Ok(Response::builder()
                                 .status(StatusCode::NOT_FOUND)
                                 .body(Body::from("Not found"))
-                                .unwrap()),
+                                .unwrap_or_else(|_| Response::new(Body::from("Not found")))),
                         }
                     } else {
                         let index_path = dist.join("index.html");
@@ -144,7 +203,7 @@ pub async fn run_server(state: Arc<AppState>, _app: Option<AppHandle>) {
                             Err(_) => Ok(Response::builder()
                                 .status(StatusCode::NOT_FOUND)
                                 .body(Body::from("Not found"))
-                                .unwrap()),
+                                .unwrap_or_else(|_| Response::new(Body::from("Not found")))),
                         }
                     }
                 }

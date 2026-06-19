@@ -39,14 +39,15 @@ pub fn derive_user_key(user_id: &str) -> Result<[u8; 32], AppError> {
     let pepper = MASTER_PEPPER
         .get()
         .ok_or_else(|| AppError::internal("Master pepper not initialized."))?;
-    Ok(derive_key_inner(user_id, pepper))
+    derive_key_inner(user_id, pepper)
 }
 
-fn derive_key_inner(user_id: &str, pepper: &[u8; 32]) -> [u8; 32] {
+fn derive_key_inner(user_id: &str, pepper: &[u8; 32]) -> Result<[u8; 32], AppError> {
     let hk = Hkdf::<Sha256>::new(Some(pepper), user_id.as_bytes());
     let mut okm = [0u8; 32];
-    hk.expand(&[], &mut okm).expect("HKDF expand should not fail");
-    okm
+    hk.expand(&[], &mut okm)
+        .map_err(|_| AppError::internal("HKDF expand falhou."))?;
+    Ok(okm)
 }
 
 /// Initialize user crypto on login — derives and caches the key.
@@ -54,20 +55,22 @@ pub fn init_user_crypto(user_id: &str) -> Result<(), AppError> {
     let key = derive_user_key(user_id)?;
     user_keys()
         .lock()
-        .unwrap()
+        .map_err(|_| AppError::internal("Erro ao acessar cache de chaves."))?
         .insert(user_id.to_string(), key);
     Ok(())
 }
 
 /// Clear user crypto on logout.
 pub fn clear_user_crypto(user_id: &str) {
-    user_keys().lock().unwrap().remove(user_id);
+    if let Ok(mut guard) = user_keys().lock() {
+        guard.remove(user_id);
+    }
 }
 
 fn load_key(user_id: &str) -> Result<[u8; 32], AppError> {
     user_keys()
         .lock()
-        .unwrap()
+        .map_err(|_| AppError::internal("Erro ao acessar cache de chaves."))?
         .get(user_id)
         .copied()
         .ok_or_else(|| {
@@ -152,16 +155,16 @@ mod tests {
     #[test]
     fn test_derive_user_key_deterministic() {
         let pepper = [0xabu8; 32];
-        let k1 = derive_key_inner("user-123", &pepper);
-        let k2 = derive_key_inner("user-123", &pepper);
+        let k1 = derive_key_inner("user-123", &pepper).unwrap();
+        let k2 = derive_key_inner("user-123", &pepper).unwrap();
         assert_eq!(k1, k2);
     }
 
     #[test]
     fn test_derive_user_key_different_users() {
         let pepper = [0xabu8; 32];
-        let k1 = derive_key_inner("user-123", &pepper);
-        let k2 = derive_key_inner("user-456", &pepper);
+        let k1 = derive_key_inner("user-123", &pepper).unwrap();
+        let k2 = derive_key_inner("user-456", &pepper).unwrap();
         assert_ne!(k1, k2);
     }
 

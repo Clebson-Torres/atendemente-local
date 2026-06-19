@@ -105,6 +105,10 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .route("/patients/import/preview", post(import_preview))
         .route("/patients/import/commit", post(import_commit))
         .route("/dashboard", get(dashboard))
+        .route("/backup", post(create_backup_handler))
+        .route("/backup/restore", post(restore_backup_handler))
+        .route("/backup/config", get(get_backup_config_handler).put(set_backup_config_handler))
+        .route("/audit/logs", get(list_audit_logs))
         .route("/network-info", get(network_info))
         .with_state(state)
 }
@@ -143,6 +147,101 @@ async fn network_info(
         ipv6: v6,
         port: state.config.server_port,
     }))
+}
+
+// ─── Backup ─────────────────────────────────────────────────────────────────
+
+#[derive(Deserialize)]
+struct RestoreInput {
+    backup_base64: String,
+}
+
+// ─── Backup Config ──────────────────────────────────────────────────────────
+
+#[derive(Serialize, Deserialize)]
+struct BackupConfigResponse {
+    frequency: String,
+    last_backup_at: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct BackupConfigInput {
+    frequency: String,
+}
+
+async fn get_backup_config_handler(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+) -> Result<Json<ActionResponse<BackupConfigResponse>>, AppError> {
+    let user = get_authenticated_user(&headers, &state).await?;
+    let db = state.get_or_open_user_db(&user.id).await?;
+    let config = features::backup::get_backup_config(&db, &user.id).await?;
+    Ok(Json(ActionResponse::success("", BackupConfigResponse {
+        frequency: config.frequency,
+        last_backup_at: config.last_backup_at,
+    })))
+}
+
+async fn set_backup_config_handler(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Json(input): Json<BackupConfigInput>,
+) -> Result<Json<ActionResponse<()>>, AppError> {
+    let user = get_authenticated_user(&headers, &state).await?;
+    let db = state.get_or_open_user_db(&user.id).await?;
+    features::backup::set_backup_config(&db, &user.id, &input.frequency).await?;
+    Ok(Json(ActionResponse::<()>::success_empty("Configuracao de backup atualizada.")))
+}
+
+async fn create_backup_handler(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+) -> Result<(axum::http::StatusCode, [(axum::http::HeaderName, String); 2], Vec<u8>), AppError> {
+    let user = get_authenticated_user(&headers, &state).await?;
+    let db = state.get_or_open_user_db(&user.id).await?;
+    let bundle = features::backup::create_backup(&db, &state.config, &user.id).await?;
+    let _ = features::backup::touch_backup_timestamp(&db, &user.id).await;
+    Ok((
+        axum::http::StatusCode::OK,
+        [
+            (axum::http::HeaderName::from_static("content-type"), "application/zip".into()),
+            (axum::http::HeaderName::from_static("content-disposition"), format!("attachment; filename=\"{}\"", bundle.file_name)),
+        ],
+        bundle.bytes,
+    ))
+}
+
+async fn restore_backup_handler(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Json(input): Json<RestoreInput>,
+) -> Result<Json<ActionResponse<serde_json::Value>>, AppError> {
+    let user = get_authenticated_user(&headers, &state).await?;
+    let db = state.get_or_open_user_db(&user.id).await?;
+    let data = base64_decode(&input.backup_base64)?;
+    let manifest = features::backup::restore_backup(&db, &state.config, &user.id, &data).await?;
+    Ok(Json(ActionResponse::success("Backup restaurado com sucesso.", serde_json::json!({
+        "version": manifest.version,
+        "entries": manifest.file_hashes.len(),
+    }))))
+}
+
+// ─── Audit ──────────────────────────────────────────────────────────────────
+
+#[derive(Deserialize)]
+struct AuditQuery {
+    limit: Option<i64>,
+}
+
+async fn list_audit_logs(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Query(query): Query<AuditQuery>,
+) -> Result<Json<ActionResponse<Vec<crate::audit::AuditEvent>>>, AppError> {
+    let user = get_authenticated_user(&headers, &state).await?;
+    let db = state.get_or_open_user_db(&user.id).await?;
+    let events = crate::audit::list_audit_events(&db, &user.id, query.limit.unwrap_or(100)).await?;
+    Ok(Json(ActionResponse::success("", events)))
 }
 
 // ─── Health Check ───────────────────────────────────────────────────────────

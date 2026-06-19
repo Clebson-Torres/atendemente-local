@@ -6,6 +6,7 @@ use rand::RngCore;
 
 const KEYCHAIN_SERVICE: &str = "atendemente";
 const KEYCHAIN_ACCOUNT: &str = "master_pepper";
+pub const MAX_UPLOAD_SIZE_BYTES: u64 = 20 * 1024 * 1024;
 
 #[derive(Clone)]
 pub struct AppConfig {

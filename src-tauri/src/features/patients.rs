@@ -25,7 +25,7 @@ fn input_to_pii(input: &CreatePatientInput) -> PatientPii {
 
 fn encrypt_pii(input: &CreatePatientInput, user_id: &str) -> Result<(String, String, String), AppError> {
     let pii = input_to_pii(input);
-    let json = serde_json::to_string(&pii).expect("PII JSON serialization should not fail");
+    let json = serde_json::to_string(&pii).map_err(|e| AppError::internal(format!("Erro ao serializar PII: {}", e)))?;
     let encrypted = crypto::encrypt_content(&json, user_id)?;
     Ok((encrypted.encrypted_payload, encrypted.iv, encrypted.auth_tag))
 }

@@ -10,6 +10,7 @@ use axum::{
 };
 use serde::Deserialize;
 
+use crate::audit::{self, AuditAction};
 use crate::errors::{ActionResponse, AppError};
 use crate::AppState;
 
@@ -115,9 +116,35 @@ async fn login_handler(
     )
     .await?;
 
-    let result = auth_service::login(&state.auth_db, &input.email, &input.password)
-        .await
-        .map_err(|e| AppError::unauthorized(e))?;
+    let result = match auth_service::login(&state.auth_db, &input.email, &input.password).await {
+        Ok(r) => {
+            let _ = audit::write_audit_event(
+                &state.auth_db,
+                &r.user_id,
+                AuditAction::LoginSucceeded,
+                "session",
+                Some(&r.user_id),
+                serde_json::json!({}),
+                None,
+            )
+            .await;
+            r
+        }
+        Err(e) => {
+            let user_id = format!("unknown:{}", input.email);
+            let _ = audit::write_audit_event(
+                &state.auth_db,
+                &user_id,
+                AuditAction::LoginFailed,
+                "session",
+                None,
+                serde_json::json!({"email": input.email}),
+                None,
+            )
+            .await;
+            return Err(AppError::unauthorized(e));
+        }
+    };
 
     // Initialize crypto for this user
     crate::crypto::init_user_crypto(&result.user_id)
@@ -142,9 +169,25 @@ async fn logout_handler(
     headers: HeaderMap,
 ) -> Result<Json<ActionResponse<()>>, AppError> {
     let token = extract_bearer_token(&headers)?;
+    let user_id = auth_service::validate_session(&state.auth_db, &token)
+        .await
+        .map(|(uid, _, _)| uid)
+        .unwrap_or_default();
     auth_service::logout(&state.auth_db, &token)
         .await
         .map_err(|e| AppError::internal(e))?;
+    if !user_id.is_empty() {
+        let _ = audit::write_audit_event(
+            &state.auth_db,
+            &user_id,
+            AuditAction::Logout,
+            "session",
+            Some(&user_id),
+            serde_json::json!({}),
+            None,
+        )
+        .await;
+    }
     state.clear_user_db().await;
     Ok(Json(ActionResponse::<()>::success_empty("Sessão encerrada.")))
 }
@@ -221,6 +264,17 @@ async fn lock_handler(
     crate::crypto::clear_user_crypto(&user_id);
     state.clear_user_db_for_user(&user_id).await;
 
+    let _ = audit::write_audit_event(
+        &state.auth_db,
+        &user_id,
+        AuditAction::Locked,
+        "session",
+        Some(&user_id),
+        serde_json::json!({}),
+        None,
+    )
+    .await;
+
     Ok(Json(ActionResponse::<()>::success_empty("Tela bloqueada.")))
 }
 
@@ -239,6 +293,16 @@ async fn unlock_handler(
         .map_err(|e| AppError::internal(e))?;
 
     if !password_valid {
+        let _ = audit::write_audit_event(
+            &state.auth_db,
+            &user_id,
+            AuditAction::LoginFailed,
+            "session",
+            Some(&user_id),
+            serde_json::json!({"reason": "unlock_wrong_password"}),
+            None,
+        )
+        .await;
         return Err(AppError::unauthorized("Senha incorreta."));
     }
 
@@ -246,6 +310,17 @@ async fn unlock_handler(
         .map_err(|e| AppError::internal(format!("Erro ao reiniciar criptografia: {}", e)))?;
 
     state.get_or_open_user_db(&user_id).await?;
+
+    let _ = audit::write_audit_event(
+        &state.auth_db,
+        &user_id,
+        AuditAction::Unlocked,
+        "session",
+        Some(&user_id),
+        serde_json::json!({}),
+        None,
+    )
+    .await;
 
     Ok(Json(ActionResponse::<()>::success_empty("Tela desbloqueada.")))
 }

@@ -1,7 +1,7 @@
 import { NavLink } from "react-router-dom";
 import { useAuth } from "../App";
 import { logout } from "../lib/auth";
-import { House, CalendarDays, UsersRound, CreditCard, Smartphone, LogOut } from "lucide-react";
+import { House, CalendarDays, UsersRound, CreditCard, Smartphone, Settings as SettingsIcon, LogOut } from "lucide-react";
 import { cn } from "../lib/utils";
 
 const nav = [
@@ -10,6 +10,7 @@ const nav = [
   { label: "Pacientes", href: "/patients", icon: UsersRound },
   { label: "Financeiro", href: "/payments", icon: CreditCard },
   { label: "Acesso Mobile", href: "/network", icon: Smartphone },
+  { label: "Configurações", href: "/settings", icon: SettingsIcon },
 ];
 
 export default function Layout({ children }: { children: React.ReactNode }) {

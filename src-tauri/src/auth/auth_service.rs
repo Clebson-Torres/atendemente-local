@@ -122,7 +122,7 @@ pub async fn register(
     let (token, token_hash) = generate_session_token();
     let expires_at = chrono::Utc::now()
         .checked_add_signed(chrono::Duration::days(SESSION_TTL_DAYS))
-        .unwrap()
+        .ok_or_else(|| "Erro interno: overflow ao calcular expiracao da sessao.")?
         .format("%Y-%m-%dT%H:%M:%S")
         .to_string();
 
@@ -147,7 +147,6 @@ pub async fn register(
     })
 }
 
-/// Login with email and password
 pub async fn login(
     db: &SqlitePool,
     email: &str,
@@ -183,7 +182,7 @@ pub async fn login(
     let (token, token_hash) = generate_session_token();
     let expires_at = chrono::Utc::now()
         .checked_add_signed(chrono::Duration::days(SESSION_TTL_DAYS))
-        .unwrap()
+        .ok_or_else(|| "Erro interno: overflow ao calcular expiracao da sessao.")?
         .format("%Y-%m-%dT%H:%M:%S")
         .to_string();
 
@@ -301,7 +300,7 @@ pub async fn recover_with_secret(
     let reset_token_hash = hash_token(&reset_token);
     let expires_at = chrono::Utc::now()
         .checked_add_signed(chrono::Duration::minutes(RESET_TOKEN_TTL_MINUTES))
-        .unwrap()
+        .ok_or_else(|| "Erro interno: overflow ao calcular expiracao do token.".to_string())?
         .format("%Y-%m-%dT%H:%M:%S")
         .to_string();
 
