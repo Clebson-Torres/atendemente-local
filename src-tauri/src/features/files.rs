@@ -4,31 +4,84 @@ use sqlx::SqlitePool;
 use uuid::Uuid;
 
 use crate::audit;
-use crate::config::AppConfig;
+use crate::config::{AppConfig, MAX_UPLOAD_SIZE_BYTES};
 use crate::db::models::{FileUploadRequest, RecordFile};
 use crate::errors::AppError;
 
-const MAX_FILE_SIZE_BYTES: u64 = 20 * 1024 * 1024;
+const ALLOWED_EXTENSIONS: &[&str] = &["pdf", "docx", "png", "jpg", "jpeg"];
+const BLOCKED_EXTENSIONS: &[&str] = &["exe", "dll", "bat", "cmd", "ps1", "msi", "scr", "js", "vbs"];
 
-fn validate_file_content(bytes: &[u8], declared_name: &str) -> Result<(), AppError> {
-    let kind = infer::get(bytes);
-    let ext = Path::new(declared_name)
+fn sanitize_file_name(name: &str) -> String {
+    let base = name
+        .replace('\\', "/")
+        .split('/')
+        .next_back()
+        .unwrap_or("arquivo")
+        .chars()
+        .map(|c| match c {
+            ':' | '*' | '?' | '"' | '<' | '>' | '|' => '_',
+            c if c.is_control() => '_',
+            c => c,
+        })
+        .collect::<String>()
+        .trim_matches('.')
+        .trim()
+        .to_string();
+    if base.is_empty() {
+        "arquivo.bin".to_string()
+    } else {
+        base
+    }
+}
+
+fn file_extension(name: &str) -> String {
+    Path::new(name)
         .extension()
         .and_then(|e| e.to_str())
         .unwrap_or("")
-        .to_lowercase();
+        .to_lowercase()
+}
+
+fn validate_file_metadata(input: &FileUploadRequest) -> Result<String, AppError> {
+    if input.file_size < 0 || input.file_size as u64 > MAX_UPLOAD_SIZE_BYTES {
+        return Err(AppError::bad_request("Arquivo excede o tamanho máximo de 20 MB."));
+    }
+
+    let sanitized = sanitize_file_name(&input.file_name);
+    let ext = file_extension(&sanitized);
+    if BLOCKED_EXTENSIONS.contains(&ext.as_str()) || !ALLOWED_EXTENSIONS.contains(&ext.as_str()) {
+        return Err(AppError::bad_request("Extensao de arquivo nao permitida."));
+    }
+    Ok(sanitized)
+}
+
+fn validate_file_content(bytes: &[u8], declared_name: &str, declared_mime: &str) -> Result<(), AppError> {
+    let kind = infer::get(bytes);
+    let ext = file_extension(declared_name);
 
     let allowed_pairs: &[(&str, &[&str])] = &[
         ("application/pdf",  &["pdf"]),
         ("image/jpeg",       &["jpg", "jpeg"]),
         ("image/png",        &["png"]),
-        ("application/msword", &["doc"]),
         ("application/vnd.openxmlformats-officedocument.wordprocessingml.document", &["docx"]),
     ];
+    let declared_pair_valid = allowed_pairs.iter().any(|(m, exts)| {
+        *m == declared_mime && exts.contains(&ext.as_str())
+    });
+    if !declared_pair_valid {
+        return Err(AppError::bad_request(
+            "MIME type declarado nao corresponde a extensao permitida.",
+        ));
+    }
 
     match kind {
         Some(k) => {
             let mime = k.mime_type();
+            let mime = if ext == "docx" && mime == "application/zip" {
+                "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+            } else {
+                mime
+            };
             let valid = allowed_pairs.iter().any(|(m, exts)| {
                 *m == mime && exts.contains(&ext.as_str())
             });
@@ -39,29 +92,19 @@ fn validate_file_content(bytes: &[u8], declared_name: &str) -> Result<(), AppErr
             }
         }
         None => {
-            if !["doc", "docx"].contains(&ext.as_str()) {
-                return Err(AppError::bad_request("Tipo de arquivo não reconhecido."));
-            }
+            return Err(AppError::bad_request("Tipo de arquivo não reconhecido."));
         }
     }
     Ok(())
 }
 
-const ALLOWED_EXTENSIONS: &[&str] = &[".pdf", ".doc", ".docx", ".png", ".jpg", ".jpeg"];
 pub async fn create_upload_session(
     db: &SqlitePool,
     config: &AppConfig,
     user_id: &str,
     input: &FileUploadRequest,
 ) -> Result<(String, String), AppError> {
-    // Validate extension
-    let normalized_name = input.file_name.to_lowercase();
-    let has_extension = ALLOWED_EXTENSIONS
-        .iter()
-        .any(|ext| normalized_name.ends_with(ext));
-    if !has_extension {
-        return Err(AppError::bad_request("Extensao de arquivo nao permitida."));
-    }
+    let sanitized_name = validate_file_metadata(input)?;
 
     // Verify appointment
     let _appt = sqlx::query_as::<_, (String,)>(
@@ -104,7 +147,7 @@ pub async fn create_upload_session(
         user_id,
         &input.patient_id,
         &input.appointment_id,
-        &input.file_name,
+        &sanitized_name,
     )?;
 
     // Ensure storage dir exists
@@ -131,7 +174,7 @@ pub async fn create_upload_session(
     .bind(&payment_id)
     .bind(&input.kind)
     .bind(&storage_path_str)
-    .bind(&input.file_name)
+    .bind(&sanitized_name)
     .bind(&input.mime_type)
     .bind(input.file_size)
     .execute(db)
@@ -211,7 +254,7 @@ pub async fn confirm_upload(
         ));
     }
 
-    if metadata.len() > MAX_FILE_SIZE_BYTES {
+    if metadata.len() > MAX_UPLOAD_SIZE_BYTES {
         let _ = tokio::fs::remove_file(path).await;
         sqlx::query("UPDATE record_files SET deleted_at = datetime('now') WHERE id = ? AND user_id = ?")
             .bind(file_id)
@@ -227,7 +270,7 @@ pub async fn confirm_upload(
     // Validate magic bytes
     let data = tokio::fs::read(path).await
         .map_err(|_| AppError::internal("Erro ao ler arquivo para validacao."))?;
-    validate_file_content(&data, &file.original_name)?;
+    validate_file_content(&data, &file.original_name, &file.mime_type)?;
 
     // Audit log
     audit::write_audit_log(
@@ -557,14 +600,14 @@ mod tests {
     #[tokio::test]
     async fn test_validate_file_content_pdf() {
         let pdf_data = valid_pdf_bytes();
-        assert!(validate_file_content(&pdf_data, "test.pdf").is_ok());
+        assert!(validate_file_content(&pdf_data, "test.pdf", "application/pdf").is_ok());
     }
 
     #[tokio::test]
     async fn test_validate_file_content_rejects_mismatch() {
         let pdf_data = valid_pdf_bytes();
         // PDF content with .png extension should fail
-        assert!(validate_file_content(&pdf_data, "test.png").is_err());
+        assert!(validate_file_content(&pdf_data, "test.png", "image/png").is_err());
     }
 
     #[tokio::test]
@@ -606,5 +649,109 @@ mod tests {
         // Wrong user should not be able to download
         let result = download_file(&db, wrong_user, &file_id).await;
         assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn rejects_invalid_extension_before_writing_file() {
+        let (tmp, db) = test_db().await;
+        let config = test_config(&tmp);
+        let user_id = "550e8400-e29b-41d4-a716-446655440001";
+        let patient_id = "550e8400-e29b-41d4-a716-446655440002";
+        let appt_id = "550e8400-e29b-41d4-a716-446655440003";
+        seed_data(&db, user_id, patient_id, appt_id).await;
+
+        let input = FileUploadRequest {
+            appointment_id: appt_id.into(),
+            patient_id: patient_id.into(),
+            payment_id: None,
+            kind: "session_attachment".into(),
+            file_name: "malware.pdf.exe".into(),
+            file_size: 10,
+            mime_type: "application/pdf".into(),
+        };
+
+        assert!(create_upload_session(&db, &config, user_id, &input).await.is_err());
+    }
+
+    #[tokio::test]
+    async fn rejects_declared_mime_that_does_not_match_content() {
+        let (tmp, db) = test_db().await;
+        let config = test_config(&tmp);
+        let user_id = "550e8400-e29b-41d4-a716-446655440001";
+        let patient_id = "550e8400-e29b-41d4-a716-446655440002";
+        let appt_id = "550e8400-e29b-41d4-a716-446655440003";
+        seed_data(&db, user_id, patient_id, appt_id).await;
+        let pdf_data = valid_pdf_bytes();
+
+        let input = FileUploadRequest {
+            appointment_id: appt_id.into(),
+            patient_id: patient_id.into(),
+            payment_id: None,
+            kind: "session_attachment".into(),
+            file_name: "test.pdf".into(),
+            file_size: pdf_data.len() as i64,
+            mime_type: "image/png".into(),
+        };
+        let (file_id, _) = create_upload_session(&db, &config, user_id, &input)
+            .await
+            .expect("session is created before content validation");
+        write_upload_content(&db, user_id, &file_id, &pdf_data).await.unwrap();
+
+        assert!(confirm_upload(&db, &config, user_id, &file_id).await.is_err());
+    }
+
+    #[tokio::test]
+    async fn rejects_file_above_configured_limit() {
+        let (tmp, db) = test_db().await;
+        let config = test_config(&tmp);
+        let user_id = "550e8400-e29b-41d4-a716-446655440001";
+        let patient_id = "550e8400-e29b-41d4-a716-446655440002";
+        let appt_id = "550e8400-e29b-41d4-a716-446655440003";
+        seed_data(&db, user_id, patient_id, appt_id).await;
+
+        let input = FileUploadRequest {
+            appointment_id: appt_id.into(),
+            patient_id: patient_id.into(),
+            payment_id: None,
+            kind: "session_attachment".into(),
+            file_name: "large.pdf".into(),
+            file_size: (crate::config::MAX_UPLOAD_SIZE_BYTES + 1) as i64,
+            mime_type: "application/pdf".into(),
+        };
+
+        assert!(create_upload_session(&db, &config, user_id, &input).await.is_err());
+    }
+
+    #[tokio::test]
+    async fn sanitizes_original_name_and_uses_uuid_storage_name() {
+        let (tmp, db) = test_db().await;
+        let config = test_config(&tmp);
+        let user_id = "550e8400-e29b-41d4-a716-446655440001";
+        let patient_id = "550e8400-e29b-41d4-a716-446655440002";
+        let appt_id = "550e8400-e29b-41d4-a716-446655440003";
+        seed_data(&db, user_id, patient_id, appt_id).await;
+
+        let input = FileUploadRequest {
+            appointment_id: appt_id.into(),
+            patient_id: patient_id.into(),
+            payment_id: None,
+            kind: "session_attachment".into(),
+            file_name: "..\\laudo:clinico?.pdf".into(),
+            file_size: valid_pdf_bytes().len() as i64,
+            mime_type: "application/pdf".into(),
+        };
+
+        let (file_id, storage_path) = create_upload_session(&db, &config, user_id, &input)
+            .await
+            .unwrap();
+        let file = sqlx::query_as::<_, RecordFile>("SELECT * FROM record_files WHERE id = ?")
+            .bind(file_id)
+            .fetch_one(&db)
+            .await
+            .unwrap();
+
+        assert_eq!(file.original_name, "laudo_clinico_.pdf");
+        assert!(!storage_path.contains("laudo"));
+        assert!(storage_path.ends_with(".pdf"));
     }
 }

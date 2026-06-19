@@ -271,6 +271,36 @@ export const api = {
 
   dashboard: () =>
     request<DashboardData>("/dashboard"),
+
+  backup: {
+    create: async (): Promise<{ blob: Blob; fileName: string }> => {
+      const token = getCurrentToken();
+      const res = await fetch(`${API}/backup`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) {
+        const json = await res.json().catch(() => ({}));
+        throw new Error(json.message || "Erro ao criar backup");
+      }
+      const disposition = res.headers.get("content-disposition");
+      const fileName = disposition?.match(/filename="?(.+?)"?$/)?.[1] || `backup_${Date.now()}.zip`;
+      const blob = await res.blob();
+      return { blob, fileName };
+    },
+    restore: (backupBase64: string) =>
+      request<{ version: number; entries: number }>("/backup/restore", {
+        method: "POST",
+        body: JSON.stringify({ backup_base64: backupBase64 }),
+      }),
+    getConfig: () =>
+      request<BackupConfigData>("/backup/config"),
+    setConfig: (frequency: string) =>
+      request<void>("/backup/config", {
+        method: "PUT",
+        body: JSON.stringify({ frequency }),
+      }),
+  },
 };
 
 // ─── Types ───────────────────────────────────────────────────────────────
@@ -440,6 +470,11 @@ export interface DownloadResult {
 export interface FinancialSummary {
   paid_cents: number;
   pending_cents: number;
+}
+
+export interface BackupConfigData {
+  frequency: string;
+  last_backup_at: string | null;
 }
 
 export interface DashboardData {

@@ -1,6 +1,7 @@
 pub mod appointments;
 pub mod appointments_recurrence;
 pub mod auth;
+pub mod backup;
 pub mod dashboard;
 pub mod exports;
 pub mod files;
