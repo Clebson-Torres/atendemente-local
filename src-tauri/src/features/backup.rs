@@ -498,14 +498,18 @@ pub async fn get_backup_config(
     db: &SqlitePool,
     user_id: &str,
 ) -> Result<BackupConfig, AppError> {
-    sqlx::query_as::<_, BackupConfig>(
+    let config = sqlx::query_as::<_, BackupConfig>(
         r#"SELECT frequency, last_backup_at FROM backup_config WHERE user_id = ?"#,
     )
     .bind(user_id)
     .fetch_optional(db)
     .await
-    .map_err(|e| AppError::internal(format!("Erro ao ler config de backup: {}", e)))?
-    .ok_or_else(|| AppError::not_found("Config de backup nao encontrada."))
+    .map_err(|e| AppError::internal(format!("Erro ao ler config de backup: {}", e)))?;
+
+    Ok(config.unwrap_or(BackupConfig {
+        frequency: "never".to_string(),
+        last_backup_at: None,
+    }))
 }
 
 pub async fn set_backup_config(
@@ -536,10 +540,13 @@ pub async fn touch_backup_timestamp(
 ) -> Result<(), AppError> {
     let now = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%S%.3fZ").to_string();
     sqlx::query(
-        r#"UPDATE backup_config SET last_backup_at = ?, updated_at = datetime('now') WHERE user_id = ?"#,
+        r#"INSERT INTO backup_config (user_id, frequency, last_backup_at, updated_at)
+        VALUES (?, 'manual', ?, datetime('now'))
+        ON CONFLICT(user_id) DO UPDATE SET last_backup_at = ?, updated_at = datetime('now')"#,
     )
-    .bind(&now)
     .bind(user_id)
+    .bind(&now)
+    .bind(&now)
     .execute(db)
     .await
     .map_err(|e| AppError::internal(format!("Erro ao atualizar timestamp de backup: {}", e)))?;
