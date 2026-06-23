@@ -50,18 +50,18 @@ export default function Settings() {
 
   const handleConfirmExport = async () => {
     const pw = backupPassword;
-    if (pw.length > 0 && pw.length < 12) {
+    if (pw.length < 12) {
       setPasswordError("Minimo 12 caracteres para backup com senha.");
       return;
     }
-    if (pw.length > 0 && pw !== backupPasswordConfirm) {
+    if (pw !== backupPasswordConfirm) {
       setPasswordError("Senhas nao conferem.");
       return;
     }
     setShowPasswordModal(false);
     setCreating(true);
     try {
-      const password = pw.length >= 12 ? pw : undefined;
+      const password = pw;
       const { blob, fileName } = await api.backup.create(password);
       await downloadFile(blob, fileName);
       const c = await api.backup.getConfig();
@@ -161,8 +161,8 @@ export default function Settings() {
           Backup Manual
         </h2>
         <p className="text-sm text-muted-foreground">
-          Opcional: defina uma senha para criptografar o backup (min. 12 caracteres).
-          Backups sem senha serao exportados como ZIP simples.
+          Defina uma senha para criptografar o backup (min. 12 caracteres).
+          O backup sera criptografado com AES-256-GCM.
         </p>
         <Button onClick={handleCreateBackupClick} disabled={creating}>
           {creating ? <RefreshCw className="h-4 w-4 animate-spin mr-2" /> : <Lock className="h-4 w-4 mr-2" />}
@@ -285,7 +285,7 @@ export default function Settings() {
             </h3>
             <p className="text-sm text-muted-foreground">
               {passwordMode === "export"
-                ? "Deixe em branco para exportar sem criptografia."
+                ? "Defina uma senha de minimo 12 caracteres para criptografar o backup."
                 : "Este backup esta criptografado. Informe a senha definida na exportacao."}
             </p>
             <div className="space-y-3">
@@ -312,7 +312,10 @@ export default function Settings() {
               <Button variant="ghost" onClick={() => setShowPasswordModal(false)}>
                 Cancelar
               </Button>
-              <Button onClick={passwordMode === "export" ? handleConfirmExport : handleConfirmRestore}>
+              <Button
+                onClick={passwordMode === "export" ? handleConfirmExport : handleConfirmRestore}
+                disabled={passwordMode === "export" ? backupPassword.length < 12 || backupPassword !== backupPasswordConfirm : backupPassword.length < 12}
+              >
                 {passwordMode === "export" ? "Exportar" : "Restaurar"}
               </Button>
             </div>
