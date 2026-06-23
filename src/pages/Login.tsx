@@ -238,9 +238,11 @@ export default function Login() {
             <button type="submit" disabled={loading} className="w-full bg-primary text-primary-foreground py-2.5 rounded-xl hover:bg-primary/90 font-medium disabled:opacity-50 transition-colors">
               {loading ? "Entrando..." : "Entrar"}
             </button>
-            <div className="flex justify-between text-sm">
-              <button type="button" onClick={() => { setMode("recover"); setSuccessMsg(""); }} className="text-primary hover:underline">Esqueceu a senha?</button>
-              <Link to="/register" className="text-primary hover:underline">Criar conta</Link>
+            <Link to="/register" className="w-full flex items-center justify-center gap-2 bg-[#2D8C5C] text-white py-2.5 rounded-xl hover:bg-[#2D8C5C]/90 font-medium transition-colors text-sm">
+              Primeiro acesso? Criar conta
+            </Link>
+            <div className="flex justify-center text-sm">
+              <button type="button" onClick={() => { setMode("recover"); setSuccessMsg(""); }} className="text-muted-foreground hover:text-foreground transition-colors">Esqueceu a senha?</button>
             </div>
           </form>
         )}
