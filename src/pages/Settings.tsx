@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { api, type BackupConfigData } from "../lib/api";
 import { Shield, Download, Upload, RefreshCw, Lock, Unlock, Smartphone, Wifi, WifiOff } from "lucide-react";
 import Button from "../components/ui/Button";
-import Select from "../components/ui/Select";
+import Modal from "../components/ui/Modal";
 import { downloadFile } from "../lib/utils";
 import { toast } from "../components/ui/Toast";
 
@@ -281,51 +281,49 @@ export default function Settings() {
         </div>
       </div>
 
-      {showPasswordModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="app-surface p-6 rounded-xl shadow-xl max-w-md w-full mx-4 space-y-4">
-            <h3 className="font-display text-lg font-semibold">
-              {passwordMode === "export" ? "Proteger Backup com Senha" : "Senha do Backup"}
-            </h3>
-            <p className="text-sm text-muted-foreground">
-              {passwordMode === "export"
-                ? "Defina uma senha de minimo 12 caracteres para criptografar o backup."
-                : "Este backup esta criptografado. Informe a senha definida na exportacao."}
-            </p>
-            <div className="space-y-3">
-              <input
-                type="password"
-                placeholder="Senha (min. 12 caracteres)"
-                value={backupPassword}
-                onChange={(e) => setBackupPassword(e.target.value)}
-                className="w-full px-3 py-2 rounded-lg border border-input bg-background text-sm"
-                autoFocus
-              />
-              {passwordMode === "export" && (
-                <input
-                  type="password"
-                  placeholder="Confirmar senha"
-                  value={backupPasswordConfirm}
-                  onChange={(e) => setBackupPasswordConfirm(e.target.value)}
-                  className="w-full px-3 py-2 rounded-lg border border-input bg-background text-sm"
-                />
-              )}
-            </div>
-            {passwordError && <p className="text-sm text-destructive">{passwordError}</p>}
-            <div className="flex gap-3 justify-end">
-              <Button variant="ghost" onClick={() => setShowPasswordModal(false)}>
-                Cancelar
-              </Button>
-              <Button
-                onClick={passwordMode === "export" ? handleConfirmExport : handleConfirmRestore}
-                disabled={passwordMode === "export" ? backupPassword.length < 12 || backupPassword !== backupPasswordConfirm : backupPassword.length < 12}
-              >
-                {passwordMode === "export" ? "Exportar" : "Restaurar"}
-              </Button>
-            </div>
-          </div>
+      <Modal
+        open={showPasswordModal}
+        onClose={() => setShowPasswordModal(false)}
+        title={passwordMode === "export" ? "Proteger Backup com Senha" : "Senha do Backup"}
+        size="sm"
+      >
+        <p className="text-sm text-muted-foreground mb-4">
+          {passwordMode === "export"
+            ? "Defina uma senha de minimo 12 caracteres para criptografar o backup."
+            : "Este backup esta criptografado. Informe a senha definida na exportacao."}
+        </p>
+        <div className="space-y-3">
+          <input
+            type="password"
+            placeholder="Senha (min. 12 caracteres)"
+            value={backupPassword}
+            onChange={(e) => setBackupPassword(e.target.value)}
+            className="w-full px-3 py-2 rounded-lg border border-input bg-background text-sm"
+            autoFocus
+          />
+          {passwordMode === "export" && (
+            <input
+              type="password"
+              placeholder="Confirmar senha"
+              value={backupPasswordConfirm}
+              onChange={(e) => setBackupPasswordConfirm(e.target.value)}
+              className="w-full px-3 py-2 rounded-lg border border-input bg-background text-sm"
+            />
+          )}
         </div>
-      )}
+        {passwordError && <p className="text-sm text-destructive mt-2">{passwordError}</p>}
+        <div className="flex gap-3 justify-end mt-4">
+          <Button variant="ghost" onClick={() => setShowPasswordModal(false)}>
+            Cancelar
+          </Button>
+          <Button
+            onClick={passwordMode === "export" ? handleConfirmExport : handleConfirmRestore}
+            disabled={passwordMode === "export" ? backupPassword.length < 12 || backupPassword !== backupPasswordConfirm : backupPassword.length < 12}
+          >
+            {passwordMode === "export" ? "Exportar" : "Restaurar"}
+          </Button>
+        </div>
+      </Modal>
     </div>
   );
 }

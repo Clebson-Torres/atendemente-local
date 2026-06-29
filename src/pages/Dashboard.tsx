@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { api, type DashboardData } from "../lib/api";
 import { useNavigate } from "react-router-dom";
 import { CalendarDays, UsersRound, TrendingUp } from "lucide-react";
@@ -51,15 +51,15 @@ export default function Dashboard() {
     </div>
   );
 
-  const apptData = data.monthly_appointments.map((m) => ({
+  const apptData = useMemo(() => data.monthly_appointments.map((m) => ({
     month: m.month.slice(5),
     atendimentos: m.count,
-  }));
+  })), [data]);
 
-  const finData = data.monthly_financial.map((m) => ({
+  const finData = useMemo(() => data.monthly_financial.map((m) => ({
     month: m.month.slice(5),
     receita: m.total_cents / 100,
-  }));
+  })), [data]);
 
   return (
     <div ref={dashboardRef} className="p-4 sm:p-6 space-y-6">

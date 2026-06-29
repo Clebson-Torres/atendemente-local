@@ -110,7 +110,7 @@ export default function FileUploadButton({ appointmentId, patientId, onUploadCom
 
           <div>
             <label className="block text-sm font-medium mb-1">Tipo</label>
-            <select value={kind} onChange={(e) => setKind(e.target.value as any)} className="w-full rounded-2xl border border-input bg-white px-3 py-2 text-sm">
+            <select value={kind} onChange={(e) => setKind(e.target.value as "session_attachment" | "payment_receipt")} className="w-full rounded-2xl border border-input bg-white px-3 py-2 text-sm">
               <option value="session_attachment">Anexo da Sessão</option>
               <option value="payment_receipt">Recibo de Pagamento</option>
             </select>
