@@ -258,7 +258,11 @@ describe("default start time", () => {
     const midnight = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     const { starts_at } = computeDefaultStartTime(midnight);
     const d = new Date(starts_at);
-    expect(d.getHours()).toBe((now.getHours() + 1) % 24);
+    if (now.getMinutes() === 0) {
+      expect(d.getHours()).toBe(now.getHours());
+    } else {
+      expect(d.getHours()).toBe((now.getHours() + 1) % 24);
+    }
     expect(d.getMinutes()).toBe(0);
   });
 
