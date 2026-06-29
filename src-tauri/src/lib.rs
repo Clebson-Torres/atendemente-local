@@ -115,16 +115,25 @@ fn start_backup_scheduler(state: Arc<AppState>) {
             .await
             {
                 Ok(u) => u,
-                Err(_) => continue,
+                Err(e) => {
+                    tracing::error!("[BackupScheduler] Falha ao listar usuarios: {}", e);
+                    continue;
+                }
             };
             for user_id in &users {
                 let db = match state.get_or_open_user_db(user_id).await {
                     Ok(d) => d,
-                    Err(_) => continue,
+                    Err(e) => {
+                        tracing::warn!("[BackupScheduler] Falha ao abrir banco para {}: {}", user_id, e);
+                        continue;
+                    }
                 };
                 let config = match crate::features::backup::get_backup_config(&db, user_id).await {
                     Ok(c) => c,
-                    Err(_) => continue,
+                    Err(e) => {
+                        tracing::warn!("[BackupScheduler] Falha ao ler config para {}: {}", user_id, e);
+                        continue;
+                    }
                 };
                 let should_backup = match config.frequency.as_str() {
                     "never" => false,

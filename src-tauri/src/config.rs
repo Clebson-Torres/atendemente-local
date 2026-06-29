@@ -45,20 +45,20 @@ pub fn load_config_file() -> Result<ConfigFile, Box<dyn std::error::Error>> {
     }
 }
 
-fn save_config_file(cfg: &ConfigFile) -> Result<(), Box<dyn std::error::Error>> {
+async fn save_config_file_async(cfg: &ConfigFile) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let path = config_path();
     if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent)?;
+        tokio::fs::create_dir_all(parent).await?;
     }
     let content = toml::to_string(cfg)?;
-    std::fs::write(&path, content)?;
+    tokio::fs::write(&path, content).await?;
     Ok(())
 }
 
-pub fn set_mobile_access_enabled(enabled: bool) {
+pub async fn set_mobile_access_enabled(enabled: bool) {
     let mut cfg = load_config_file().unwrap_or_default();
     cfg.mobile_access_enabled = Some(enabled);
-    if let Err(e) = save_config_file(&cfg) {
+    if let Err(e) = save_config_file_async(&cfg).await {
         tracing::error!("[Config] Falha ao persistir mobile_access_enabled: {}", e);
     }
 }

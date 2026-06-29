@@ -67,11 +67,11 @@ export const api = {
     appointments: (id: string) =>
       request<CalendarEvent[]>(`/patients/${id}/appointments`),
     importPreview: (contentBase64: string) =>
-      request<{ session_id: string; preview: { total_rows: number; valid_rows: number; error_rows: number; rows: any[] } }>("/patients/import/preview", {
+      request<{ session_id: string; preview: { total_rows: number; valid_rows: number; error_rows: number; rows: CsvRow[] } }>("/patients/import/preview", {
         method: "POST",
         body: JSON.stringify({ content_base64: contentBase64 }),
       }),
-    importCommit: (sessionId: string, rows: any[]) =>
+    importCommit: (sessionId: string, rows: CsvRow[]) =>
       request<{ imported: number }>("/patients/import/commit", {
         method: "POST",
         body: JSON.stringify({ session_id: sessionId, rows }),
@@ -515,4 +515,18 @@ export interface PaginatedResult<T> {
   total: number;
   page: number;
   per_page: number;
+}
+
+export interface CsvRow {
+  line: number;
+  full_name: string;
+  chart_number: string | null;
+  phone: string | null;
+  email: string | null;
+  birth_date: string | null;
+  health_history: string | null;
+  medications_in_use: string | null;
+  emergency_phone: string | null;
+  admin_notes: string | null;
+  errors: string[];
 }

@@ -293,8 +293,17 @@ async fn collect_files(
                         .await
                         .map_err(|e| AppError::internal(format!("Erro ao ler anexo: {}", e)))?;
                     let decrypted = match crypto::load_key(user_id) {
-                        Ok(key) => crypto::decrypt_file(&bytes, &key).unwrap_or(bytes.clone()),
-                        Err(_) => bytes,
+                        Ok(key) => match crypto::decrypt_file(&bytes, &key) {
+                            Ok(d) => d,
+                            Err(e) => {
+                                tracing::warn!("[Backup] Falha ao descriptografar anexo {}: {}", zip_path, e);
+                                bytes.clone()
+                            }
+                        },
+                        Err(e) => {
+                            tracing::warn!("[Backup] Chave indisponivel para usuario {}: {}", user_id, e);
+                            bytes
+                        }
                     };
                     entries.push((zip_path, decrypted));
             }

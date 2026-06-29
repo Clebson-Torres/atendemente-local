@@ -1,4 +1,4 @@
-import { useEffect, useRef, type ReactNode } from "react";
+import { useEffect, useRef, useCallback, type ReactNode } from "react";
 import { cn } from "../../lib/utils";
 import { X } from "lucide-react";
 
@@ -17,28 +17,61 @@ const widths = {
   xl: "max-w-4xl",
 };
 
+function getFocusableElements(container: HTMLElement): HTMLElement[] {
+  return Array.from(
+    container.querySelectorAll<HTMLElement>(
+      'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])'
+    )
+  );
+}
+
 export default function Modal({ open, onClose, title, children, size = "md" }: Props) {
   const dialogRef = useRef<HTMLDivElement>(null);
   const previousActiveElement = useRef<Element | null>(null);
+
+  const handleKeyDown = useCallback(
+    (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        onClose();
+        return;
+      }
+      if (e.key !== "Tab" || !dialogRef.current) return;
+      const focusable = getFocusableElements(dialogRef.current);
+      if (focusable.length === 0) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (e.shiftKey) {
+        if (document.activeElement === first) {
+          e.preventDefault();
+          last.focus();
+        }
+      } else {
+        if (document.activeElement === last) {
+          e.preventDefault();
+          first.focus();
+        }
+      }
+    },
+    [onClose]
+  );
 
   useEffect(() => {
     if (open) {
       previousActiveElement.current = document.activeElement;
       document.body.style.overflow = "hidden";
-      dialogRef.current?.focus();
+      setTimeout(() => dialogRef.current?.focus(), 0);
     } else {
       document.body.style.overflow = "";
       if (previousActiveElement.current instanceof HTMLElement) {
         previousActiveElement.current.focus();
       }
     }
-    const handleEsc = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
-    if (open) window.addEventListener("keydown", handleEsc);
+    if (open) window.addEventListener("keydown", handleKeyDown);
     return () => {
       document.body.style.overflow = "";
-      window.removeEventListener("keydown", handleEsc);
+      window.removeEventListener("keydown", handleKeyDown);
     };
-  }, [open, onClose]);
+  }, [open, onClose, handleKeyDown]);
 
   if (!open) return null;
 

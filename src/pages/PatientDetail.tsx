@@ -98,7 +98,7 @@ export default function PatientDetail() {
               <Phone className="h-4 w-4 text-muted-foreground" />
               <span>{patient.phone}</span>
               <a
-                href={`https://wa.me/55${patient.phone.replace(/\D/g, "")}`}
+                href={`https://wa.me/${patient.phone.replace(/\D/g, "").length > 10 ? patient.phone.replace(/\D/g, "") : `55${patient.phone.replace(/\D/g, "")}`}`}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="text-green-600 hover:text-green-700 transition-colors"

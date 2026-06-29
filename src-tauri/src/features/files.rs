@@ -384,7 +384,9 @@ pub async fn delete_file(
     .map_err(|e| AppError::internal(format!("DB error: {}", e)))?
     .ok_or_else(|| AppError::not_found("Arquivo nao encontrado."))?;
 
-    let _ = tokio::fs::remove_file(&file.storage_path).await;
+    if let Err(e) = tokio::fs::remove_file(&file.storage_path).await {
+        tracing::warn!("[Files] Falha ao remover arquivo fisico '{}': {}", file.storage_path, e);
+    }
 
     sqlx::query("UPDATE record_files SET deleted_at = datetime('now') WHERE id = ? AND user_id = ?")
         .bind(file_id)

@@ -1,25 +1,11 @@
 import { useState, useRef } from "react";
-import { api } from "../lib/api";
+import { api, type CsvRow } from "../lib/api";
 import Button from "./ui/Button";
 import Modal from "./ui/Modal";
 import DataTable from "./ui/DataTable";
 import type { Column } from "./ui/DataTable";
 import { toast } from "./ui/Toast";
 import { Upload, FileSpreadsheet, AlertCircle, CheckCircle2 } from "lucide-react";
-
-interface CsvRow {
-  line: number;
-  full_name: string;
-  chart_number: string | null;
-  phone: string | null;
-  email: string | null;
-  birth_date: string | null;
-  health_history: string | null;
-  medications_in_use: string | null;
-  emergency_phone: string | null;
-  admin_notes: string | null;
-  errors: string[];
-}
 
 interface ImportPreview {
   total_rows: number;
