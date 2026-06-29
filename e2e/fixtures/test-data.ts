@@ -63,7 +63,7 @@ export async function createTestAppointment(
       patient_id: patientId,
       starts_at: tomorrow.toISOString(),
       ends_at: endTime.toISOString(),
-      session_price_cents: 10000, // R$ 100,00
+      session_price_cents: 10000,
     }),
   });
 
@@ -74,4 +74,28 @@ export async function createTestAppointment(
 
   const json = await res.json();
   return json.data;
+}
+
+/**
+ * Create an encrypted backup via API.
+ */
+export async function createTestBackup(token: string): Promise<{ blob: Blob; fileName: string }> {
+  const res = await fetch(`${API}/backup`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({ password: "testbackup1234" }),
+  });
+
+  if (!res.ok) {
+    const body = await res.text();
+    throw new Error(`Failed to create backup: ${res.status} ${body}`);
+  }
+
+  const blob = await res.blob();
+  const contentDisposition = res.headers.get("content-disposition");
+  const fileName = contentDisposition?.match(/filename="?(.+?)"?$/)?.[1] || "backup.zip";
+  return { blob, fileName };
 }
