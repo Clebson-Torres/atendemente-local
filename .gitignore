@@ -4,8 +4,9 @@
 .yarn/*
 !.yarn/patches
 
-# Environment files (keep .env for local dev with Firebase keys)
-# .env
+# Environment files
+.env
+.env.*
 
 *.db
 uploads/

@@ -16,19 +16,22 @@ export default function FileList({ appointmentId, onRefresh }: Props) {
   const [deleting, setDeleting] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
 
-  async function load() {
-    setLoading(true);
-    try {
-      const data = await api.files.list(appointmentId);
-      setFiles(data);
-    } catch {
-      setFiles([]);
-    } finally {
-      setLoading(false);
+  useEffect(() => {
+    const ctrl = new AbortController();
+    async function load() {
+      setLoading(true);
+      try {
+        const data = await api.files.list(appointmentId);
+        if (!ctrl.signal.aborted) setFiles(data);
+      } catch {
+        if (!ctrl.signal.aborted) setFiles([]);
+      } finally {
+        if (!ctrl.signal.aborted) setLoading(false);
+      }
     }
-  }
-
-  useEffect(() => { load(); }, [appointmentId]);
+    load();
+    return () => ctrl.abort();
+  }, [appointmentId]);
 
   function getFileIcon(mimeType: string) {
     if (mimeType.startsWith("image/")) return <FileImage className="h-4 w-4 text-green-600" />;

@@ -50,9 +50,7 @@ test.describe("Payments", () => {
     const totalTexts = ["Resumo", "Total", "Recebido", "Pendente"];
     for (const text of totalTexts) {
       const el = authPage.locator(`text=${text}`).first();
-      if (await el.isVisible()) {
-        // Good, card exists
-      }
+      await expect(el).toBeVisible({ timeout: 5000 });
     }
   });
 });

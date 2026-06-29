@@ -41,18 +41,22 @@ export default function NetworkInfoPage() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
   useEffect(() => {
+    const ctrl = new AbortController();
     Promise.all([
       api.settings.getNetworkInfo(),
       api.settings.getMobileAccess(),
     ])
       .then(([netData, settingsData]) => {
-        setInfo(netData);
-        setMobileEnabled(settingsData.enabled);
-        setLoading(false);
+        if (!ctrl.signal.aborted) {
+          setInfo(netData);
+          setMobileEnabled(settingsData.enabled);
+          setLoading(false);
+        }
       })
       .catch(() => {
-        setLoading(false);
+        if (!ctrl.signal.aborted) setLoading(false);
       });
+    return () => ctrl.abort();
   }, []);
 
   useEffect(() => {

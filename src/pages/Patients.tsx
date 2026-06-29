@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -62,15 +62,17 @@ export default function Patients() {
 
   useEffect(() => { load(); }, []);
 
+  useEffect(() => {
+    const t = setTimeout(() => { load(search, 1, statusFilter); }, 300);
+    return () => clearTimeout(t);
+  }, [search, statusFilter]);
+
   function handleSearchChange(e: React.ChangeEvent<HTMLInputElement>) {
     setSearch(e.target.value);
-    load(e.target.value, 1, statusFilter);
   }
 
   function handleStatusFilterChange(e: React.ChangeEvent<HTMLSelectElement>) {
-    const val = e.target.value;
-    setStatusFilter(val);
-    load(search, 1, val);
+    setStatusFilter(e.target.value);
   }
 
   async function handleExportCsv() {

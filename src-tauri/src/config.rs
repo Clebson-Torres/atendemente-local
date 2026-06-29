@@ -58,7 +58,9 @@ fn save_config_file(cfg: &ConfigFile) -> Result<(), Box<dyn std::error::Error>> 
 pub fn set_mobile_access_enabled(enabled: bool) {
     let mut cfg = load_config_file().unwrap_or_default();
     cfg.mobile_access_enabled = Some(enabled);
-    let _ = save_config_file(&cfg);
+    if let Err(e) = save_config_file(&cfg) {
+        tracing::error!("[Config] Falha ao persistir mobile_access_enabled: {}", e);
+    }
 }
 
 fn load_pepper_from_keychain() -> Option<[u8; 32]> {
@@ -127,14 +129,18 @@ fn load_or_generate_pepper() -> [u8; 32] {
 
     // Keychain unavailable — fall back to config file
     if let Some(parent) = path.parent() {
-        let _ = std::fs::create_dir_all(parent);
+        if let Err(e) = std::fs::create_dir_all(parent) {
+            tracing::error!("[Config] Falha ao criar diretorio de config: {}", e);
+        }
     }
     let cfg = ConfigFile {
         master_pepper: Some(BASE64.encode(bytes)),
         mobile_access_enabled: None,
     };
     if let Ok(content) = toml::to_string(&cfg) {
-        let _ = std::fs::write(&path, content);
+        if let Err(e) = std::fs::write(&path, content) {
+            tracing::error!("[Config] Falha ao persistir pepper no config.toml: {}", e);
+        }
     }
 
     bytes

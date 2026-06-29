@@ -19,17 +19,21 @@ export default function PatientDetail() {
 
   useEffect(() => {
     if (!id) return;
+    const ctrl = new AbortController();
     setLoading(true);
     Promise.all([
       api.patients.get(id),
       api.patients.appointments(id),
     ])
       .then(([p, a]) => {
-        setPatient(p);
-        setAppointments(a);
+        if (!ctrl.signal.aborted) {
+          setPatient(p);
+          setAppointments(a);
+        }
       })
-      .catch((e) => setError(e.message))
-      .finally(() => setLoading(false));
+      .catch((e) => { if (!ctrl.signal.aborted) setError(e.message); })
+      .finally(() => { if (!ctrl.signal.aborted) setLoading(false); });
+    return () => ctrl.abort();
   }, [id]);
 
   async function handleExport() {

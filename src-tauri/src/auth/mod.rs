@@ -194,7 +194,9 @@ async fn logout_handler(
         )
         .await;
     }
-    state.clear_user_db().await;
+    if !user_id.is_empty() {
+        state.clear_user_db_for_user(&user_id).await;
+    }
     Ok(Json(ActionResponse::<()>::success_empty("Sessão encerrada.")))
 }
 

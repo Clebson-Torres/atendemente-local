@@ -94,6 +94,7 @@ pub async fn create_backup_with_password(
         rand::rngs::OsRng.fill_bytes(&mut salt);
         let fp = crypto::pepper_fingerprint().ok();
         let pepper_hex = crypto::get_pepper().map(|p| hex_encode(p));
+        // pepper_hex is only stored inside the encrypted ZIP (protected by password)
         (Some(hex_encode(&salt)), pepper_hex, fp)
     } else {
         (None, None, None)

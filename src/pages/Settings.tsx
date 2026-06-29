@@ -26,18 +26,22 @@ export default function Settings() {
   const pendingRestoreFile = useRef<Uint8Array | null>(null);
 
   useEffect(() => {
+    const ctrl = new AbortController();
     Promise.all([
       api.backup.getConfig(),
       api.settings.getMobileAccess(),
     ])
       .then(([c, m]) => {
-        setConfig(c);
-        setAutoEnabled(c.frequency !== "never");
-        setFrequency(c.frequency !== "never" ? c.frequency : "daily");
-        setMobileAccess(m.enabled);
+        if (!ctrl.signal.aborted) {
+          setConfig(c);
+          setAutoEnabled(c.frequency !== "never");
+          setFrequency(c.frequency !== "never" ? c.frequency : "daily");
+          setMobileAccess(m.enabled);
+        }
       })
       .catch(() => {})
-      .finally(() => { setMobileAccessLoading(false); setLoading(false); });
+      .finally(() => { if (!ctrl.signal.aborted) { setMobileAccessLoading(false); setLoading(false); } });
+    return () => ctrl.abort();
   }, []);
 
   const handleCreateBackupClick = () => {

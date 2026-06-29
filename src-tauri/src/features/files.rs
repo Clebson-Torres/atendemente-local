@@ -207,11 +207,10 @@ pub async fn write_upload_content(
             .map_err(|e| AppError::internal(format!("Failed to create dir: {}", e)))?;
     }
 
-    let encrypted = match crypto::load_key(user_id) {
-        Ok(key) => crypto::encrypt_file(data, &key)
-            .map_err(|e| AppError::internal(format!("Failed to encrypt file: {}", e)))?,
-        Err(_) => data.to_vec(),
-    };
+    let key = crypto::load_key(user_id)
+        .map_err(|e| AppError::internal(format!("Chave de criptografia nao disponivel: {}", e)))?;
+    let encrypted = crypto::encrypt_file(data, &key)
+        .map_err(|e| AppError::internal(format!("Falha ao criptografar arquivo: {}", e)))?;
 
     tokio::fs::write(&file.storage_path, &encrypted)
         .await
@@ -247,7 +246,10 @@ pub async fn confirm_upload(
     let data = match crypto::load_key(user_id) {
         Ok(key) => crypto::decrypt_file(&raw, &key)
             .map_err(|e| AppError::internal(format!("Erro ao descriptografar: {}", e)))?,
-        Err(_) => raw,
+        Err(_) => {
+            tracing::warn!("[Files] Chave de criptografia indisponivel, servindo arquivo sem descriptografia");
+            raw
+        }
     };
 
     // Verify plaintext size matches declared size
@@ -324,7 +326,10 @@ pub async fn download_file(
     let data = match crypto::load_key(user_id) {
         Ok(key) => crypto::decrypt_file(&raw, &key)
             .map_err(|e| AppError::internal(format!("Erro ao descriptografar: {}", e)))?,
-        Err(_) => raw,
+        Err(_) => {
+            tracing::warn!("[Files] Chave de criptografia indisponivel, servindo arquivo sem descriptografia");
+            raw
+        }
     };
 
     audit::write_audit_log(
@@ -426,6 +431,8 @@ mod tests {
     fn test_config(tmp: &tempfile::TempDir) -> AppConfig {
         let storage_dir = tmp.path().join("uploads");
         std::fs::create_dir_all(&storage_dir).unwrap();
+        let pepper = [0x42u8; 32];
+        crate::crypto::set_pepper(&pepper);
         AppConfig {
             database_url: String::new(),
             auth_database_url: String::new(),
@@ -501,6 +508,7 @@ mod tests {
         let (tmp, db) = test_db().await;
         let config = test_config(&tmp);
         let user_id = "550e8400-e29b-41d4-a716-446655440001";
+        crate::crypto::init_user_crypto(user_id).unwrap();
         let patient_id = "550e8400-e29b-41d4-a716-446655440002";
         let appt_id = "550e8400-e29b-41d4-a716-446655440003";
         seed_data(&db, user_id, patient_id, appt_id).await;
@@ -539,6 +547,7 @@ mod tests {
         let (tmp, db) = test_db().await;
         let config = test_config(&tmp);
         let user_id = "550e8400-e29b-41d4-a716-446655440001";
+        crate::crypto::init_user_crypto(user_id).unwrap();
         let patient_id = "550e8400-e29b-41d4-a716-446655440002";
         let appt_id = "550e8400-e29b-41d4-a716-446655440003";
         seed_data(&db, user_id, patient_id, appt_id).await;
@@ -578,6 +587,7 @@ mod tests {
         let (tmp, db) = test_db().await;
         let config = test_config(&tmp);
         let user_id = "550e8400-e29b-41d4-a716-446655440001";
+        crate::crypto::init_user_crypto(user_id).unwrap();
         let patient_id = "550e8400-e29b-41d4-a716-446655440002";
         let appt_id = "550e8400-e29b-41d4-a716-446655440003";
         seed_data(&db, user_id, patient_id, appt_id).await;
@@ -630,6 +640,7 @@ mod tests {
         let (tmp, db) = test_db().await;
         let config = test_config(&tmp);
         let user_id = "550e8400-e29b-41d4-a716-446655440001";
+        crate::crypto::init_user_crypto(user_id).unwrap();
         let wrong_user = "550e8400-e29b-41d4-a716-446655449999";
         let patient_id = "550e8400-e29b-41d4-a716-446655440002";
         let appt_id = "550e8400-e29b-41d4-a716-446655440003";
@@ -693,6 +704,7 @@ mod tests {
         let (tmp, db) = test_db().await;
         let config = test_config(&tmp);
         let user_id = "550e8400-e29b-41d4-a716-446655440001";
+        crate::crypto::init_user_crypto(user_id).unwrap();
         let patient_id = "550e8400-e29b-41d4-a716-446655440002";
         let appt_id = "550e8400-e29b-41d4-a716-446655440003";
         seed_data(&db, user_id, patient_id, appt_id).await;

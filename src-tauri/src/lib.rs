@@ -182,10 +182,36 @@ pub async fn run_server(state: Arc<AppState>, _app: Option<AppHandle>) -> Result
                 async move {
                     let path = _req.uri().path().trim_start_matches('/');
                     let file_path = dist.join(path);
-                    if file_path.exists() && file_path.is_file() {
-                        match tokio::fs::read(&file_path).await {
+                    let canonical = match file_path.canonicalize() {
+                        Ok(p) => p,
+                        Err(_) => {
+                            let index_path = dist.join("index.html");
+                            match tokio::fs::read_to_string(&index_path).await {
+                                Ok(html) => return Ok(Response::new(Body::from(html))),
+                                Err(_) => return Ok(Response::builder()
+                                    .status(StatusCode::NOT_FOUND)
+                                    .body(Body::from("Not found"))
+                                    .unwrap_or_else(|_| Response::new(Body::from("Not found")))),
+                            }
+                        }
+                    };
+                    let dist_canonical = match dist.canonicalize() {
+                        Ok(p) => p,
+                        Err(_) => return Ok(Response::builder()
+                            .status(StatusCode::NOT_FOUND)
+                            .body(Body::from("Not found"))
+                            .unwrap_or_else(|_| Response::new(Body::from("Not found")))),
+                    };
+                    if !canonical.starts_with(&dist_canonical) {
+                        return Ok(Response::builder()
+                            .status(StatusCode::FORBIDDEN)
+                            .body(Body::from("Forbidden"))
+                            .unwrap_or_else(|_| Response::new(Body::from("Forbidden"))));
+                    }
+                    if canonical.exists() && canonical.is_file() {
+                        match tokio::fs::read(&canonical).await {
                             Ok(data) => {
-                                let mime = mime_guess::from_path(&file_path).first_or_octet_stream();
+                                let mime = mime_guess::from_path(&canonical).first_or_octet_stream();
                                 Ok(Response::builder()
                                     .header("content-type", mime.as_ref())
                                     .body(Body::from(data))

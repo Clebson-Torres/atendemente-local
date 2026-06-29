@@ -33,6 +33,9 @@ export default function OnboardingFlow() {
   }
 
   function handleBackupSkip() {
+    if (recoverySecret && !window.confirm("Tem certeza? Sem o arquivo de recuperação, você não poderá recuperar sua senha se esquecê-la.")) {
+      return;
+    }
     clearPendingRecoverySecret();
   }
 

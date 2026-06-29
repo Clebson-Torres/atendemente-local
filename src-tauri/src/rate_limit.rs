@@ -52,13 +52,17 @@ pub async fn enforce_rate_limit(
     let now = chrono::Utc::now();
     let now_iso = now.format("%Y-%m-%dT%H:%M:%S%.3fZ").to_string();
 
+    let mut tx = db.begin()
+        .await
+        .map_err(|_| AppError::internal("Rate limit transaction failed."))?;
+
     let existing = sqlx::query_as::<_, (String, i64, String)>(
         r#"SELECT id, hits, window_starts_at FROM request_limits
         WHERE scope = ? AND identifier = ?"#,
     )
     .bind(scope)
     .bind(identifier)
-    .fetch_optional(db)
+    .fetch_optional(&mut *tx)
     .await
     .map_err(|_| AppError::internal("Rate limit check failed."))?;
 
@@ -74,9 +78,10 @@ pub async fn enforce_rate_limit(
             .bind(scope)
             .bind(identifier)
             .bind(&now_iso)
-            .execute(db)
+            .execute(&mut *tx)
             .await
             .map_err(|_| AppError::internal("Rate limit insert failed."))?;
+            tx.commit().await.map_err(|_| AppError::internal("Rate limit commit failed."))?;
             return Ok(());
         }
     };
@@ -93,13 +98,15 @@ pub async fn enforce_rate_limit(
         .bind(&now_iso)
         .bind(&now_iso)
         .bind(&id)
-        .execute(db)
+        .execute(&mut *tx)
         .await
         .map_err(|_| AppError::internal("Rate limit update failed."))?;
+        tx.commit().await.map_err(|_| AppError::internal("Rate limit commit failed."))?;
         return Ok(());
     }
 
     if hits >= limit {
+        tx.rollback().await.ok();
         return Err(AppError::rate_limited(
             "Muitas tentativas em pouco tempo. Tente novamente em alguns minutos.",
         ));
@@ -110,9 +117,11 @@ pub async fn enforce_rate_limit(
     )
     .bind(&now_iso)
     .bind(&id)
-    .execute(db)
+    .execute(&mut *tx)
     .await
     .map_err(|_| AppError::internal("Rate limit update failed."))?;
+
+    tx.commit().await.map_err(|_| AppError::internal("Rate limit commit failed."))?;
 
     Ok(())
 }

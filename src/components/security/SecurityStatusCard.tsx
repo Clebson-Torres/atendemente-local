@@ -11,9 +11,11 @@ export default function SecurityStatusCard({ onboardingCompleted }: Props) {
   const [config, setConfig] = useState<BackupConfigData | null>(null);
 
   useEffect(() => {
+    const ctrl = new AbortController();
     api.backup.getConfig()
-      .then(setConfig)
+      .then((c) => { if (!ctrl.signal.aborted) setConfig(c); })
       .catch(() => {});
+    return () => ctrl.abort();
   }, []);
 
   const items = [

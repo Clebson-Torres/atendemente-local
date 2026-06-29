@@ -21,15 +21,19 @@ export default function Dashboard() {
   const dashboardRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
+    const ctrl = new AbortController();
     Promise.all([
       api.dashboard(),
       api.payments.summary(),
     ])
       .then(([d, f]) => {
-        setData(d);
-        setFinSummary(f);
+        if (!ctrl.signal.aborted) {
+          setData(d);
+          setFinSummary(f);
+        }
       })
-      .catch((e) => setError(e.message));
+      .catch((e) => { if (!ctrl.signal.aborted) setError(e.message); });
+    return () => ctrl.abort();
   }, []);
 
   if (error) return <div className="p-6 text-destructive">{error}</div>;

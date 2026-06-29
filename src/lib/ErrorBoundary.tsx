@@ -23,11 +23,15 @@ export default class ErrorBoundary extends Component<Props, State> {
             <h1 className="text-xl font-bold text-red-600 mb-2">
               Erro na aplicação
             </h1>
-            <pre className="text-sm text-red-500 whitespace-pre-wrap">
-              {this.state.error.message}
-              {"\n\n"}
-              {this.state.error.stack}
-            </pre>
+            <p className="text-sm text-red-500">
+              {this.state.error.message || "Erro inesperado."}
+            </p>
+            <button
+              className="mt-4 px-4 py-2 bg-red-600 text-white rounded-lg text-sm hover:bg-red-700"
+              onClick={() => window.location.reload()}
+            >
+              Recarregar
+            </button>
           </div>
         </div>
       );
