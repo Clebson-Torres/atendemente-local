@@ -37,7 +37,7 @@ async fn main() {
         user_dbs: RwLock::new(HashMap::new()),
     });
 
-    if let Err(e) = run_server(state, None).await {
+    if let Err(e) = run_server(state, None, None).await {
         tracing::error!("Server error: {}", e);
         std::process::exit(1);
     }

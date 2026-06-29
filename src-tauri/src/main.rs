@@ -3,6 +3,7 @@
 
 use std::collections::HashMap;
 use std::sync::Arc;
+use std::time::Duration;
 
 use atendemente_lib::{run_server, AppState};
 use tokio::sync::RwLock;
@@ -67,12 +68,15 @@ async fn main() {
         .setup(move |app| {
             let handle = app.handle().clone();
             let state = state.clone();
+            let (ready_tx, ready_rx) = std::sync::mpsc::channel();
 
-            tokio::spawn(async move {
-                if let Err(e) = run_server(state, Some(handle)).await {
+            tauri::async_runtime::spawn(async move {
+                if let Err(e) = run_server(state, Some(handle), Some(ready_tx)).await {
                     tracing::error!("Server error: {}", e);
                 }
             });
+
+            let _ = ready_rx.recv_timeout(Duration::from_secs(5));
 
             Ok(())
         })

@@ -168,7 +168,7 @@ fn start_backup_scheduler(state: Arc<AppState>) {
     });
 }
 
-pub async fn run_server(state: Arc<AppState>, _app: Option<AppHandle>) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+pub async fn run_server(state: Arc<AppState>, _app: Option<AppHandle>, ready: Option<std::sync::mpsc::Sender<()>>) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     start_backup_scheduler(state.clone());
     let auth_router = crate::auth::create_auth_router(state.clone());
     let api_routes = api::routes::create_router(state.clone());
@@ -272,6 +272,20 @@ pub async fn run_server(state: Arc<AppState>, _app: Option<AppHandle>) -> Result
             e
         })?;
 
+    if !state.config.mobile_access_enabled {
+        let ipv6_addr = format!("[::1]:{}", state.config.server_port);
+        if let Ok(ipv6_listener) = tokio::net::TcpListener::bind(&ipv6_addr).await {
+            let app_clone = app.clone();
+            tokio::spawn(async move {
+                let _ = axum::serve(ipv6_listener, app_clone).await;
+            });
+        }
+    }
+
+    if let Some(tx) = ready {
+        let _ = tx.send(());
+    }
+
     axum::serve(listener, app)
         .await
         .map_err(|e| {
@@ -281,6 +295,7 @@ pub async fn run_server(state: Arc<AppState>, _app: Option<AppHandle>) -> Result
     Ok(())
 }
 
+#[cfg(target_os = "windows")]
 pub fn add_firewall_rule() -> Result<(), String> {
     let exe_path = std::env::current_exe()
         .map_err(|e| format!("Nao foi possivel obter o caminho do executavel: {}", e))?
@@ -309,6 +324,7 @@ pub fn add_firewall_rule() -> Result<(), String> {
     }
 }
 
+#[cfg(target_os = "windows")]
 pub fn remove_firewall_rule() -> Result<(), String> {
     let output = std::process::Command::new("netsh")
         .args([
@@ -326,4 +342,16 @@ pub fn remove_firewall_rule() -> Result<(), String> {
         tracing::warn!("[Mobile] Falha ao remover regra de firewall: {}", stderr);
         Err(format!("Falha ao remover regra de firewall: {}", stderr))
     }
+}
+
+#[cfg(not(target_os = "windows"))]
+pub fn add_firewall_rule() -> Result<(), String> {
+    tracing::info!("[Mobile] Gerenciamento de firewall nao disponivel nesta plataforma");
+    Ok(())
+}
+
+#[cfg(not(target_os = "windows"))]
+pub fn remove_firewall_rule() -> Result<(), String> {
+    tracing::info!("[Mobile] Gerenciamento de firewall nao disponivel nesta plataforma");
+    Ok(())
 }

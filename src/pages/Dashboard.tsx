@@ -36,6 +36,16 @@ export default function Dashboard() {
     return () => ctrl.abort();
   }, []);
 
+  const apptData = useMemo(() => data ? data.monthly_appointments.map((m) => ({
+    month: m.month.slice(5),
+    atendimentos: m.count,
+  })) : [], [data]);
+
+  const finData = useMemo(() => data ? data.monthly_financial.map((m) => ({
+    month: m.month.slice(5),
+    receita: m.total_cents / 100,
+  })) : [], [data]);
+
   if (error) return <div className="p-6 text-destructive">{error}</div>;
 
   if (!data) return (
@@ -50,16 +60,6 @@ export default function Dashboard() {
       </div>
     </div>
   );
-
-  const apptData = useMemo(() => data.monthly_appointments.map((m) => ({
-    month: m.month.slice(5),
-    atendimentos: m.count,
-  })), [data]);
-
-  const finData = useMemo(() => data.monthly_financial.map((m) => ({
-    month: m.month.slice(5),
-    receita: m.total_cents / 100,
-  })), [data]);
 
   return (
     <div ref={dashboardRef} className="p-4 sm:p-6 space-y-6">
